@@ -18,9 +18,15 @@
 
 package org.apache.flink.configuration;
 
+import org.apache.flink.api.common.time.Time;
+
 import javax.annotation.Nonnull;
 
 import java.io.File;
+import java.util.Optional;
+
+import static org.apache.flink.configuration.MetricOptions.SYSTEM_RESOURCE_METRICS;
+import static org.apache.flink.configuration.MetricOptions.SYSTEM_RESOURCE_METRICS_PROBING_INTERVAL;
 
 /**
  * Utility class for {@link Configuration} related helper functions.
@@ -28,6 +34,19 @@ import java.io.File;
 public class ConfigurationUtils {
 
 	private static final String[] EMPTY = new String[0];
+
+	/**
+	 * @return extracted {@link MetricOptions#SYSTEM_RESOURCE_METRICS_PROBING_INTERVAL} or {@code Optional.empty()} if
+	 * {@link MetricOptions#SYSTEM_RESOURCE_METRICS} are disabled.
+	 */
+	public static Optional<Time> getSystemResourceMetricsProbingInterval(Configuration configuration) {
+		if (!configuration.getBoolean(SYSTEM_RESOURCE_METRICS)) {
+			return Optional.empty();
+		} else {
+			return Optional.of(Time.milliseconds(
+				configuration.getLong(SYSTEM_RESOURCE_METRICS_PROBING_INTERVAL)));
+		}
+	}
 
 	/**
 	 * Extracts the task manager directories for temporary files as defined by
