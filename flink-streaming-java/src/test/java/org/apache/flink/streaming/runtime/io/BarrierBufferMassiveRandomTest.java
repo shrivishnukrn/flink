@@ -202,6 +202,14 @@ public class BarrierBufferMassiveRandomTest {
 		public void registerListener(InputGateListener listener) {}
 
 		@Override
+		public void blockInputChannel(int channelIndex) {
+		}
+
+		@Override
+		public void releaseBlockedInputChannels() {
+		}
+
+		@Override
 		public int getPageSize() {
 			return PAGE_SIZE;
 		}

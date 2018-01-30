@@ -365,7 +365,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 				// 2) releaseAllResources() did not yet release buffers from bufferQueue
 				// -> we may or may not have set isReleased yet but will always wait for the
 				//    lock on bufferQueue to release buffers
-				if (isReleased.get() || bufferQueue.getAvailableBufferSize() >= numRequiredBuffers) {
+				if (isReleased.get() || isBlocked() || bufferQueue.getAvailableBufferSize() >= numRequiredBuffers) {
 					isWaitingForFloatingBuffers = false;
 					recycleBuffer = false; // just in case
 					buffer.recycleBuffer();
@@ -481,7 +481,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 		synchronized (bufferQueue) {
 			// Similar to notifyBufferAvailable(), make sure that we never add a buffer
 			// after releaseAllResources() released all buffers (see above for details).
-			if (isReleased.get()) {
+			if (isReleased.get() || isBlocked()) {
 				return;
 			}
 
