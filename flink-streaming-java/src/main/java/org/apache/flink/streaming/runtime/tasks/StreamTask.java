@@ -70,7 +70,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -306,26 +305,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			isRunning = false;
 
 			// stop all timers and threads
-			if (timerService != null && !timerService.isTerminated()) {
-				try {
-
-					final long timeoutMs = getEnvironment().getTaskManagerInfo().getConfiguration().
-						getLong(TimerServiceOptions.TIMER_SERVICE_TERMINATION_AWAIT_MS);
-
-					// wait for a reasonable time for all pending timer threads to finish
-					boolean timerShutdownComplete =
-						timerService.shutdownAndAwaitPending(timeoutMs, TimeUnit.MILLISECONDS);
-
-					if (!timerShutdownComplete) {
-						LOG.warn("Timer service shutdown exceeded time limit of {} ms while waiting for pending " +
-							"timers. Will continue with shutdown procedure.", timeoutMs);
-					}
-				}
-				catch (Throwable t) {
-					// catch and log the exception to not replace the original exception
-					LOG.error("Could not shut down timer service", t);
-				}
-			}
+			tryShutdownTimerService();
 
 			// stop all asynchronous checkpoint threads
 			try {
@@ -653,6 +633,25 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 			}
 			else {
 				LOG.debug("Ignoring notification of complete checkpoint for not-running task {}", getName());
+			}
+		}
+	}
+
+	private void tryShutdownTimerService() {
+
+		if (timerService != null && !timerService.isTerminated()) {
+
+			try {
+				final long timeoutMs = getEnvironment().getTaskManagerInfo().getConfiguration().
+					getLong(TimerServiceOptions.TIMER_SERVICE_TERMINATION_AWAIT_MS);
+
+				if (!timerService.shutdownServiceUninterruptible(timeoutMs)) {
+					LOG.warn("Timer service shutdown exceeded time limit of {} ms while waiting for pending " +
+						"timers. Will continue with shutdown procedure.", timeoutMs);
+				}
+			} catch (Throwable t) {
+				// catch and log the exception to not replace the original exception
+				LOG.error("Could not shut down timer service", t);
 			}
 		}
 	}
