@@ -87,7 +87,7 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 	protected void respondAsLeader(ChannelHandlerContext ctx, RoutedRequest routedRequest, T gateway) throws Exception {
 		HttpRequest httpRequest = routedRequest.getRequest();
 		if (log.isTraceEnabled()) {
-			log.trace("Received request " + httpRequest.getUri() + '.');
+			log.trace("Received request " + httpRequest.uri() + '.');
 		}
 
 		FileUploads uploadedFiles = null;
