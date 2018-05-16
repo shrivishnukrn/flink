@@ -21,6 +21,8 @@ package org.apache.flink.runtime.rest;
 import org.apache.flink.runtime.rest.handler.FileUploads;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
+import org.apache.flink.runtime.rest.handler.router.RouteResult;
+import org.apache.flink.runtime.rest.handler.router.RoutedRequest;
 import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
 import org.apache.flink.runtime.rest.messages.EmptyRequestBody;
 import org.apache.flink.runtime.rest.messages.UntypedResponseMessageHeaders;
@@ -37,7 +39,6 @@ import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.DefaultFullHtt
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpMethod;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpRequest;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.HttpVersion;
-import org.apache.flink.shaded.netty4.io.netty.handler.codec.http.router.Routed;
 import org.apache.flink.shaded.netty4.io.netty.util.Attribute;
 import org.apache.flink.shaded.netty4.io.netty.util.AttributeKey;
 
@@ -83,12 +84,13 @@ public class AbstractHandlerTest extends TestLogger {
 		CompletableFuture<Void> requestProcessingCompleteFuture = new CompletableFuture<>();
 		TestHandler handler = new TestHandler(requestProcessingCompleteFuture, CompletableFuture.completedFuture(restAddress), mockGatewayRetriever);
 
+		RouteResult<?> routeResult = new RouteResult<>("", "", Collections.emptyMap(), Collections.emptyMap(), "");
 		HttpRequest request = new DefaultFullHttpRequest(
 			HttpVersion.HTTP_1_1,
 			HttpMethod.GET,
 			TestHandler.TestHeaders.INSTANCE.getTargetRestEndpointURL(),
 			Unpooled.wrappedBuffer(new byte[0]));
-		Routed routerRequest = new Routed("", false, request, request.getUri(), Collections.emptyMap(), Collections.emptyMap());
+		RoutedRequest<?> routerRequest = new RoutedRequest<>(routeResult, request);
 
 		Attribute<FileUploads> attribute = new SimpleAttribute();
 		attribute.set(new FileUploads(dir));
