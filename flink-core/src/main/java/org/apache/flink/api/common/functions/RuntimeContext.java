@@ -55,6 +55,7 @@ import java.util.Map;
  */
 @Public
 public interface RuntimeContext {
+	int MAX_BATCH = 1000;
 
 	/**
 	 * Returns the name of the task in which the UDF runs, as assigned during plan construction.
@@ -486,4 +487,8 @@ public interface RuntimeContext {
 	 */
 	@PublicEvolving
 	<UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties);
+
+	default int getMaxBatchSize() {
+		return MAX_BATCH;
+	}
 }

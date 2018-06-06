@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
+import org.apache.flink.streaming.runtime.streamrecord.StreamBatch;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
@@ -33,6 +34,25 @@ import java.util.concurrent.ScheduledFuture;
  * Source contexts for various stream time characteristics.
  */
 public class StreamSourceContexts {
+
+	public static <OUT> SourceFunction.SourceContext<OUT> getSourceContext(
+		TimeCharacteristic timeCharacteristic,
+		ProcessingTimeService processingTimeService,
+		Object checkpointLock,
+		StreamStatusMaintainer streamStatusMaintainer,
+		Output<StreamRecord<OUT>> output,
+		long watermarkInterval,
+		long idleTimeout) {
+		return getSourceContext(
+			timeCharacteristic,
+			processingTimeService,
+			checkpointLock,
+			streamStatusMaintainer,
+			output,
+			watermarkInterval,
+			idleTimeout,
+			-1);
+	}
 
 	/**
 	 * Depending on the {@link TimeCharacteristic}, this method will return the adequate
@@ -50,7 +70,8 @@ public class StreamSourceContexts {
 			StreamStatusMaintainer streamStatusMaintainer,
 			Output<StreamRecord<OUT>> output,
 			long watermarkInterval,
-			long idleTimeout) {
+			long idleTimeout,
+			int maxBatchSize) {
 
 		final SourceFunction.SourceContext<OUT> ctx;
 		switch (timeCharacteristic) {
@@ -74,7 +95,7 @@ public class StreamSourceContexts {
 
 				break;
 			case ProcessingTime:
-				ctx = new NonTimestampContext<>(checkpointLock, output);
+				ctx = new NonTimestampContext<>(checkpointLock, output, maxBatchSize);
 				break;
 			default:
 				throw new IllegalArgumentException(String.valueOf(timeCharacteristic));
@@ -91,11 +112,13 @@ public class StreamSourceContexts {
 		private final Object lock;
 		private final Output<StreamRecord<T>> output;
 		private final StreamRecord<T> reuse;
+		private final StreamBatch<T> batch;
 
-		private NonTimestampContext(Object checkpointLock, Output<StreamRecord<T>> output) {
+		private NonTimestampContext(Object checkpointLock, Output<StreamRecord<T>> output, int maxBatchSize) {
 			this.lock = Preconditions.checkNotNull(checkpointLock, "The checkpoint lock cannot be null.");
 			this.output = Preconditions.checkNotNull(output, "The output cannot be null.");
 			this.reuse = new StreamRecord<>(null);
+			this.batch = new StreamBatch<>(maxBatchSize);
 		}
 
 		@Override
@@ -103,6 +126,29 @@ public class StreamSourceContexts {
 			synchronized (lock) {
 				output.collect(reuse.replace(element));
 			}
+		}
+
+		@Override
+		public void collectBatch(T element) {
+			if (!batch.isFull()) {
+				batch.add(element);
+				return;
+			}
+			finishBatch();
+			batch.add(element);
+		}
+
+		@Override
+		public void finishBatch() {
+			synchronized (lock) {
+				for (T element: batch.getRecords()) {
+					if (element == null) {
+						break;
+					}
+					output.collect(reuse.replace(element));
+				}
+			}
+			batch.clear();
 		}
 
 		@Override

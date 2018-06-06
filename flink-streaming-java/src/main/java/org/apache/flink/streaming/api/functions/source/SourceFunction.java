@@ -278,14 +278,15 @@ public interface SourceFunction<T> extends Function, Serializable {
 		void close();
 
 		default void collectBatch(T element) {
-			collect(element);
+			throw new UnsupportedOperationException();
 		}
 
 		default void collectBatchWithTimestamp(T element, long timestamp) {
-			collectWithTimestamp(element, timestamp);
+			throw new UnsupportedOperationException();
 		}
 
 		default void finishBatch() {
+			throw new UnsupportedOperationException();
 		}
 	}
 }
