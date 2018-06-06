@@ -17,6 +17,7 @@
 
 package org.apache.flink.streaming.api.operators;
 
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -28,6 +29,7 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.Preconditions;
 
+import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -388,6 +390,8 @@ public class StreamSourceContexts {
 		protected final Object checkpointLock;
 		protected final StreamStatusMaintainer streamStatusMaintainer;
 		protected final long idleTimeout;
+		private final StreamBatch<T> batch;
+		private final StreamBatch<Long> timestamps;
 
 		private ScheduledFuture<?> nextCheck;
 
@@ -417,6 +421,8 @@ public class StreamSourceContexts {
 			this.timeService = Preconditions.checkNotNull(timeService, "Time Service cannot be null.");
 			this.checkpointLock = Preconditions.checkNotNull(checkpointLock, "Checkpoint Lock cannot be null.");
 			this.streamStatusMaintainer = Preconditions.checkNotNull(streamStatusMaintainer, "Stream Status Maintainer cannot be null.");
+			this.batch = new StreamBatch<>(RuntimeContext.MAX_BATCH);
+			this.timestamps = new StreamBatch<>(RuntimeContext.MAX_BATCH);
 
 			if (idleTimeout != -1) {
 				Preconditions.checkArgument(idleTimeout >= 1, "The idle timeout cannot be smaller than 1 ms.");
@@ -457,9 +463,42 @@ public class StreamSourceContexts {
 		}
 
 		@Override
+		public void collectBatchWithTimestamp(T element, long timestamp) {
+			if (batch.isFull()) {
+				finishBatch();
+			}
+			batch.add(element);
+			timestamps.add(timestamp);
+		}
+
+		@Override
+		public void finishBatch() {
+			synchronized (checkpointLock) {
+				streamStatusMaintainer.toggleStreamStatus(StreamStatus.ACTIVE);
+
+				if (nextCheck != null) {
+					this.failOnNextCheck = false;
+				} else {
+					scheduleNextIdleDetectionTask();
+				}
+
+				List<T> records = batch.getRecords();
+				List<Long> timestamps2 = timestamps.getRecords();
+
+				for (int i = 0; i < records.size(); i++) {
+					processAndCollectWithTimestamp(records.get(i), timestamps2.get(i));
+				}
+
+				batch.clear();
+				timestamps.clear();
+			}
+		}
+
+		@Override
 		public void emitWatermark(Watermark mark) {
 			if (allowWatermark(mark)) {
 				synchronized (checkpointLock) {
+					finishBatch();
 					streamStatusMaintainer.toggleStreamStatus(StreamStatus.ACTIVE);
 
 					if (nextCheck != null) {
