@@ -19,6 +19,9 @@ package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
@@ -26,32 +29,33 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @Internal
 public final class StreamBatch<T> {
-	private final T[] batch;
+	private final ArrayList<T> batch;
 	private final int maxBatchSize;
 	private int index;
 
 	public StreamBatch(int maxBatchSize) {
 		checkState(maxBatchSize > 0);
 		this.maxBatchSize = maxBatchSize;
-		batch = (T[]) new Object[maxBatchSize];
+		batch = new ArrayList<>(maxBatchSize);
 	}
 
 	public boolean isFull() {
-		return index >= maxBatchSize;
+		return batch.size() >= maxBatchSize;
 	}
 
 	public void add(T element) {
-		batch[index++] = element;
+		batch.add(element);
 	}
 
-	public T[] getRecords() {
+	public List<T> getRecords() {
 		return batch;
 	}
 
 	public void clear() {
-		for (int i = 0; i < index; i++) {
-			batch[i] = null;
-		}
-		index = 0;
+		batch.clear();
+//		for (int i = 0; i < index; i++) {
+//			batch[i] = null;
+//		}
+//		index = 0;
 	}
 }
