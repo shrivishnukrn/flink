@@ -19,6 +19,7 @@
 package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
@@ -40,6 +41,7 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
+import org.apache.flink.streaming.runtime.streamrecord.StreamBatch;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -109,6 +111,8 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
+	private final StreamBatch<StreamRecord<IN>> batch;
+
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
 			InputGate[] inputGates,
@@ -123,6 +127,7 @@ public class StreamInputProcessor<IN> {
 			TaskIOMetricGroup metrics,
 			WatermarkGauge watermarkGauge) throws IOException {
 
+		this.batch = new StreamBatch<>(RuntimeContext.MAX_BATCH);
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
@@ -181,31 +186,37 @@ public class StreamInputProcessor<IN> {
 
 					if (recordOrMark.isWatermark()) {
 						// handle watermark
+						finishBatch();
 						statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
 						continue;
 					} else if (recordOrMark.isStreamStatus()) {
 						// handle stream status
+						finishBatch();
 						statusWatermarkValve.inputStreamStatus(recordOrMark.asStreamStatus(), currentChannel);
 						continue;
 					} else if (recordOrMark.isLatencyMarker()) {
 						// handle latency marker
 						synchronized (lock) {
+							finishBatch();
 							streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
 						}
 						continue;
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-						synchronized (lock) {
-							numRecordsIn.inc();
-							streamOperator.setKeyContextElement1(record);
-							streamOperator.processElement(record);
+
+						if (batch.isFull()) {
+							finishBatch();
 						}
+						batch.add(record);
 						return true;
 					}
 				}
 			}
 
+			if (barrierHandler.isEmpty()) {
+				finishBatch();
+			}
 			final BufferOrEvent bufferOrEvent = barrierHandler.getNextNonBlocked();
 			if (bufferOrEvent != null) {
 				if (bufferOrEvent.isBuffer()) {
@@ -229,6 +240,20 @@ public class StreamInputProcessor<IN> {
 				return false;
 			}
 		}
+	}
+
+	private void finishBatch() throws Exception {
+		synchronized (lock) {
+			for (StreamRecord<IN> record: batch.getRecords()) {
+				if (record == null) {
+					break;
+				}
+				numRecordsIn.inc();
+				streamOperator.setKeyContextElement1(record);
+				streamOperator.processElement(record);
+			}
+		}
+		batch.clear();
 	}
 
 	public void cleanup() throws IOException {
