@@ -149,6 +149,7 @@ public class StreamSourceContexts {
 					}
 					output.collect(reuse.replace(element));
 				}
+				output.finishBatch();
 			}
 			batch.clear();
 		}

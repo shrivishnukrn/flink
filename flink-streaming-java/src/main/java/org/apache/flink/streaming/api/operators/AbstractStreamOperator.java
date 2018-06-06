@@ -692,6 +692,11 @@ public abstract class AbstractStreamOperator<OUT>
 		}
 
 		@Override
+		public void finishBatch() {
+			output.finishBatch();
+		}
+
+		@Override
 		public void close() {
 			output.close();
 		}

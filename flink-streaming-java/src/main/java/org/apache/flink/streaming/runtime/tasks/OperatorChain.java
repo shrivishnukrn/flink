@@ -427,14 +427,14 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		protected final Counter numRecordsIn;
 		protected final WatermarkGauge watermarkGauge = new WatermarkGauge();
 
-		protected final StreamStatusProvider streamStatusProvider;
+		protected final OperatorChain<?, ?> streamStatusProvider;
 
 		@Nullable
 		protected final OutputTag<T> outputTag;
 
 		public ChainingOutput(
 				OneInputStreamOperator<T, ?> operator,
-				StreamStatusProvider streamStatusProvider,
+				OperatorChain<?, ?> streamStatusProvider,
 				@Nullable OutputTag<T> outputTag) {
 			this.operator = operator;
 
@@ -454,6 +454,13 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 
 			this.streamStatusProvider = streamStatusProvider;
 			this.outputTag = outputTag;
+		}
+
+		@Override
+		public void finishBatch() {
+			for (RecordWriterOutput<?> recordWriterOutput : streamStatusProvider.getStreamOutputs()) {
+				recordWriterOutput.finishBatch();
+			}
 		}
 
 		@Override
@@ -540,7 +547,7 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				OneInputStreamOperator<T, ?> operator,
 				TypeSerializer<T> serializer,
 				OutputTag<T> outputTag,
-				StreamStatusProvider streamStatusProvider) {
+				OperatorChain<?, ?> streamStatusProvider) {
 			super(operator, streamStatusProvider, outputTag);
 			this.serializer = serializer;
 		}

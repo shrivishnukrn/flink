@@ -80,7 +80,7 @@ public class OperatorChainTest {
 
 		final StreamTask<?, ?> containingTask = new OneInputStreamTask<T, OneInputStreamOperator<T, T>>(env);
 
-			final StreamStatusProvider statusProvider = mock(StreamStatusProvider.class);
+			final StreamStatusProvider statusProvider = mock(OperatorChain.class);
 			final StreamConfig cfg = new StreamConfig(new Configuration());
 
 			final StreamOperator<?>[] ops = new StreamOperator<?>[operators.length];
@@ -94,7 +94,7 @@ public class OperatorChainTest {
 			for (int i = 0; i < ops.length; i++) {
 				OneInputStreamOperator<T, T> op = operators[ops.length - i - 1];
 				op.setup(containingTask, cfg, lastWriter);
-				lastWriter = new ChainingOutput<>(op, statusProvider, null);
+				lastWriter = new ChainingOutput(op, (OperatorChain<?, ?>) statusProvider, null);
 				ops[i] = op;
 			}
 

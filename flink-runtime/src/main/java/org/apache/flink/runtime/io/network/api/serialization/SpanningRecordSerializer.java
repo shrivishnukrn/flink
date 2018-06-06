@@ -96,14 +96,22 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		if (targetBuffer != null) {
 			targetBuffer.append(lengthBuffer);
 			targetBuffer.append(dataBuffer);
-			targetBuffer.commit();
+//			targetBuffer.commit();
 		}
 
 		return getSerializationResult();
 	}
 
 	@Override
+	public void finishBatch() {
+		if (targetBuffer != null) {
+			targetBuffer.commit();
+		}
+	}
+
+	@Override
 	public SerializationResult continueWritingWithNextBufferBuilder(BufferBuilder buffer) throws IOException {
+		finishBatch();
 		targetBuffer = buffer;
 
 		boolean mustCommit = false;

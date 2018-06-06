@@ -150,6 +150,12 @@ public class RecordWriter<T extends IOReadableWritable> {
 		}
 	}
 
+	public void finishBatch() {
+		for (RecordSerializer<T> serializer : serializers) {
+			serializer.finishBatch();
+		}
+	}
+
 	public void broadcastEvent(AbstractEvent event) throws IOException {
 		try (BufferConsumer eventBufferConsumer = EventSerializer.toBufferConsumer(event)) {
 			for (int targetChannel = 0; targetChannel < numChannels; targetChannel++) {

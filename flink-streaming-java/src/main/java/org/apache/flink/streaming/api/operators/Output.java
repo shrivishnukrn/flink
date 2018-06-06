@@ -52,4 +52,8 @@ public interface Output<T> extends Collector<T> {
 	<X> void collect(OutputTag<X> outputTag, StreamRecord<X> record);
 
 	void emitLatencyMarker(LatencyMarker latencyMarker);
+
+	default void finishBatch() {
+		throw new UnsupportedOperationException();
+	}
 }

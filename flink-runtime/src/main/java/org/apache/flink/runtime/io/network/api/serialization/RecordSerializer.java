@@ -28,6 +28,8 @@ import java.io.IOException;
  */
 public interface RecordSerializer<T extends IOReadableWritable> {
 
+	void finishBatch();
+
 	/**
 	 * Status of the serialization result.
 	 */
