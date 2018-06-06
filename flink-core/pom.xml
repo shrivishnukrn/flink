@@ -80,6 +80,13 @@ under the License.
 			<!-- managed version -->
 		</dependency>
 
+		<!-- for code-generated serializers -->
+		<dependency>
+			<groupId>org.codehaus.janino</groupId>
+			<artifactId>janino</artifactId>
+			<version>3.0.7</version>
+		</dependency>
+
 		<!-- ================== test dependencies ================== -->
 
 		<dependency>
