@@ -55,6 +55,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Internal
 public final class PojoSerializer<T> extends TypeSerializer<T> {
 
+	// hello world
+
 	// Flags for the header
 	private static byte IS_NULL = 1;
 	private static byte NO_SUBCLASS = 2;
