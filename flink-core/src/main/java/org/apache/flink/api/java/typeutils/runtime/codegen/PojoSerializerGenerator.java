@@ -27,6 +27,7 @@ import org.codehaus.janino.SimpleCompiler;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -169,13 +170,41 @@ public class PojoSerializerGenerator<T> {
 
 	private static void addSerializerCodeTemplate(LinkedHashSet<String> headerMembers, StringBuilder sb, Field field, TypeSerializer<?> fieldSerializer) {
 		final boolean isNullable = !field.getType().isPrimitive();
-		final Tuple2<String, String> fieldAccess = createFieldAccess(headerMembers, field);
+		final Tuple2<String, String> fieldAccess = createFieldReadAccess(headerMembers, field);
 	}
 
-	private static Tuple2<String, String> createFieldAccess(LinkedHashSet<String> headerMembers, Field field) {
-		if () {
+	private static Tuple2<String, String> createFieldReadAccess(LinkedHashSet<String> headerMembers, Field field) {
 
+		final String access;
+		if (Modifier.isPublic(field.getModifiers())) {
+			access = "pojo." + field.getName();
+		} else {
+			final String methodHandleName = "methodHandle$" + field.getName();
+			final String methodHandleCode =
+				"private static final MethodHandle " + methodHandleName + " = access$" + methodHandleName + "();\n" +
+				"private static MethodHandle access$" + methodHandleName + "() {\n" +
+				"  try {\n" +
+				"    final MethodHandles.Lookup lookup = MethodHandles.lookup();\n" +
+				"    final Field f = " + createTypeTerm(field.getDeclaringClass()) + ".class" +
+				"      .getDeclaredField(\"" + field.getName() + "\");\n" +
+				"    f.setAccessible(true);\n" +
+				"    return lookup\n" +
+				"      .unreflectGetter(f)\n" +
+				"      .asType(MethodType.methodType(\n" +
+				"        " + createTypeTerm(field.getType()) + ".class,\n" +
+				"        " + createTypeTerm(field.getDeclaringClass()) + ".class));\n" +
+				"  } catch (Throwable t) {\n" +
+				"    throw new RuntimeException(\"Could not access field '" + field.getName() + "'\" +\n" +
+				"      \"using a method handle.\", t);\n" +
+				"  }\n" +
+				"}";
+			headerMembers.add(methodHandleCode);
+			access = "(" + createTypeTerm(f) + ") " + methodHandleName + ".invokeExact(pojo);";
 		}
 	}
 
+	private static String createTypeTerm(Class<?> t) {
+		// TODO this does not work for arrays
+		return t.getName();
+	}
 }
