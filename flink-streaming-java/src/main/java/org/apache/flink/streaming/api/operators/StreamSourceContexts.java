@@ -21,7 +21,6 @@ import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.streaming.runtime.streamrecord.StreamBatch;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
@@ -221,7 +220,10 @@ public class StreamSourceContexts {
 		protected void processAndCollect(T element) {
 			lastRecordTime = this.timeService.getCurrentProcessingTime();
 			output.collect(reuse.replace(element, lastRecordTime));
+			maybeEmitWatermark();
+		}
 
+		private void maybeEmitWatermark() {
 			// this is to avoid lock contention in the lockingObject by
 			// sending the watermark before the firing of the watermark
 			// emission task.
@@ -239,6 +241,18 @@ public class StreamSourceContexts {
 		@Override
 		protected void processAndCollectWithTimestamp(T element, long timestamp) {
 			processAndCollect(element);
+		}
+
+		@Override
+		protected void processAndCollectBatchWithTimestamp(StreamRecordBatch<T> batch) {
+			lastRecordTime = this.timeService.getCurrentProcessingTime();
+
+			for (int i = 0; i < batch.getNumberOfElements(); i++) {
+				StreamRecord<T> record = batch.get(i);
+				record.replace(record.getValue(), lastRecordTime);
+			}
+			output.collect(batch);
+			maybeEmitWatermark();
 		}
 
 		@Override
@@ -358,6 +372,11 @@ public class StreamSourceContexts {
 		}
 
 		@Override
+		protected void processAndCollectBatchWithTimestamp(StreamRecordBatch<T> batch) {
+			output.collect(batch);
+		}
+
+		@Override
 		protected void processAndEmitWatermark(Watermark mark) {
 			output.emitWatermark(mark);
 		}
@@ -389,8 +408,7 @@ public class StreamSourceContexts {
 		protected final Object checkpointLock;
 		protected final StreamStatusMaintainer streamStatusMaintainer;
 		protected final long idleTimeout;
-		private final StreamBatch<T> batch;
-		private final StreamBatch<Long> timestamps;
+		private final StreamRecordBatch<T> batch;
 
 		private ScheduledFuture<?> nextCheck;
 
@@ -420,8 +438,7 @@ public class StreamSourceContexts {
 			this.timeService = Preconditions.checkNotNull(timeService, "Time Service cannot be null.");
 			this.checkpointLock = Preconditions.checkNotNull(checkpointLock, "Checkpoint Lock cannot be null.");
 			this.streamStatusMaintainer = Preconditions.checkNotNull(streamStatusMaintainer, "Stream Status Maintainer cannot be null.");
-			this.batch = new StreamBatch<>(RuntimeContext.MAX_BATCH);
-			this.timestamps = new StreamBatch<>(RuntimeContext.MAX_BATCH);
+			this.batch = new StreamRecordBatch<>(RuntimeContext.MAX_BATCH);
 
 			if (idleTimeout != -1) {
 				Preconditions.checkArgument(idleTimeout >= 1, "The idle timeout cannot be smaller than 1 ms.");
@@ -466,8 +483,7 @@ public class StreamSourceContexts {
 			if (batch.isFull()) {
 				finishBatch();
 			}
-			batch.add(element);
-			timestamps.add(timestamp);
+			batch.addStreamRecord(element, timestamp);
 		}
 
 		@Override
@@ -481,12 +497,8 @@ public class StreamSourceContexts {
 					scheduleNextIdleDetectionTask();
 				}
 
-				for (int i = 0; i < batch.getNumberOfElements(); i++) {
-					processAndCollectWithTimestamp(batch.get(i), timestamps.get(i));
-				}
-
+				processAndCollectBatchWithTimestamp(batch);
 				batch.clear();
-				timestamps.clear();
 			}
 		}
 
@@ -571,6 +583,8 @@ public class StreamSourceContexts {
 
 		/** Process and collect record with timestamp. */
 		protected abstract void processAndCollectWithTimestamp(T element, long timestamp);
+
+		protected abstract void processAndCollectBatchWithTimestamp(StreamRecordBatch<T> batch);
 
 		/** Whether or not a watermark should be allowed. */
 		protected abstract boolean allowWatermark(Watermark mark);
