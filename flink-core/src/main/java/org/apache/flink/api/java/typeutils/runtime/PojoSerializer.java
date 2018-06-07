@@ -152,7 +152,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 				.getConstructor(Class.class, TypeSerializer[].class, Field[].class, boolean[].class)
 				.newInstance(clazz, fieldSerializers, fields, fieldsPrimitive);
 		} catch (Exception e) {
-			throw new FlinkRuntimeException("Could not generate PojoSerializer. This should not happen.");
+			throw new FlinkRuntimeException("Could not generate PojoSerializer. This should not happen.", e);
 		}
 	}
 

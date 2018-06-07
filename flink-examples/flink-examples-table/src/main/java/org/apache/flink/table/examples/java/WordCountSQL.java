@@ -20,6 +20,7 @@ package org.apache.flink.table.examples.java;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.table.api.Table;
@@ -42,7 +43,9 @@ public class WordCountSQL {
 
 	public static void main(String[] args) throws Exception {
 
-		Types.POJO(WC.class).createSerializer(new ExecutionConfig());
+		TypeSerializer<WC> s = Types.POJO(WC.class).createSerializer(new ExecutionConfig());
+
+		s.serialize(new WC("hello", 42L), null);
 	}
 
 	// *************************************************************************
