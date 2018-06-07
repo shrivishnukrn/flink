@@ -64,7 +64,7 @@ public class PojoField implements Serializable {
 	private void readObject(ObjectInputStream in)
 			throws IOException, ClassNotFoundException {
 		in.defaultReadObject();
-		field = FieldSerializer.deserializeField(in);
+		field = FieldSerializer.deserializeField(in).getWrappedField();
 	}
 
 	@Override

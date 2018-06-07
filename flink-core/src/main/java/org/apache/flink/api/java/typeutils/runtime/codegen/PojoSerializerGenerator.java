@@ -38,6 +38,8 @@ import java.util.LinkedHashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.util.Preconditions.checkNotNull;
+
 public class PojoSerializerGenerator<T> {
 
 	// Flags for the header
@@ -56,12 +58,15 @@ public class PojoSerializerGenerator<T> {
 
 	private Field[] fields;
 
+	private boolean[] fieldsPrimitive;
+
 	private TypeSerializer<?>[] fieldSerializers;
 
-	public PojoSerializerGenerator(Class<T> clazz, Field[] fields, TypeSerializer<?>[] fieldSerializers) {
-		this.fields = fields;
-		this.fieldSerializers = fieldSerializers;
-		this.clazz = clazz;
+	public PojoSerializerGenerator(Class<T> clazz, Field[] fields, boolean[] fieldsPrimitive, TypeSerializer<?>[] fieldSerializers) {
+		this.fields = checkNotNull(fields);
+		this.fieldsPrimitive = checkNotNull(fieldsPrimitive);
+		this.fieldSerializers = checkNotNull(fieldSerializers);
+		this.clazz = checkNotNull(clazz);
 	}
 
 	@SuppressWarnings("unchecked")

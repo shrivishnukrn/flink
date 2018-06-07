@@ -36,22 +36,25 @@ public class FieldSerializer {
 	public static void serializeField(Field field, ObjectOutputStream out) throws IOException {
 		out.writeObject(field.getDeclaringClass());
 		out.writeUTF(field.getName());
+		out.writeBoolean(field.getType().isPrimitive());
 	}
 
-	public static Field deserializeField(ObjectInputStream in) throws IOException, ClassNotFoundException  {
+	public static FlinkField deserializeField(ObjectInputStream in) throws IOException, ClassNotFoundException  {
 		Class<?> clazz = (Class<?>) in.readObject();
 		String fieldName = in.readUTF();
+		// TODO: make backwards-compatible!
+		boolean isPrimitive = in.readBoolean();
 		// try superclasses as well
 		while (clazz != null) {
 			try {
 				Field field = clazz.getDeclaredField(fieldName);
 				field.setAccessible(true);
-				return field;
+				return new FlinkField(field, isPrimitive);
 			} catch (NoSuchFieldException e) {
 				clazz = clazz.getSuperclass();
 			}
 		}
 
-		return null;
+		return new FlinkField(null, isPrimitive);
 	}
 }

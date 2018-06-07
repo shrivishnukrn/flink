@@ -76,6 +76,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 	 * <p>These may be reconfigured in {@link #ensureCompatibility(TypeSerializerConfigSnapshot)}.
 	 */
 	private transient Field[] fields;
+	private transient boolean[] fieldsPrimitive;
 	private TypeSerializer<Object>[] fieldSerializers;
 	private final int numFields;
 
@@ -123,6 +124,12 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.clazz = checkNotNull(clazz);
 		this.fieldSerializers = (TypeSerializer<Object>[]) checkNotNull(fieldSerializers);
 		this.fields = checkNotNull(fields);
+
+		this.fieldsPrimitive = new boolean[this.fields.length];
+		for (int i = 0; i < this.fields.length; ++i) {
+			this.fieldsPrimitive[i] = this.fields[i].getType().isPrimitive();
+		}
+
 		this.numFields = fieldSerializers.length;
 		this.executionConfig = checkNotNull(executionConfig);
 
@@ -138,7 +145,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.subclassSerializerCache = new HashMap<>();
 
 		// generate serializer
-		final PojoSerializerGenerator<T> generator = new PojoSerializerGenerator<>(clazz, fields, fieldSerializers);
+		final PojoSerializerGenerator<T> generator = new PojoSerializerGenerator<>(clazz, fields, fieldsPrimitive, fieldSerializers);
 		try {
 			generatedSerializer = generator.generate(cl);
 			generatedSerializerInstance = generatedSerializer.getConstructor(Class.class).newInstance(clazz);
@@ -616,6 +623,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 					// reordered fields and their serializers;
 					// this won't be applied to this serializer until all compatibility checks have been completed
 					final Field[] reorderedFields = new Field[this.numFields];
+					final boolean[] reorderedFieldsPrimitive = new boolean[this.numFields];
 					final TypeSerializer<Object>[] reorderedFieldSerializers =
 						(TypeSerializer<Object>[]) new TypeSerializer<?>[this.numFields];
 
@@ -626,6 +634,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 						int fieldIndex = findField(fieldToConfigSnapshotEntry.getKey());
 						if (fieldIndex != -1) {
 							reorderedFields[i] = fields[fieldIndex];
+							reorderedFieldsPrimitive[i] = fieldsPrimitive[fieldIndex];
 
 							compatResult = CompatibilityUtil.resolveCompatibilityResult(
 								fieldToConfigSnapshotEntry.getValue().f0,
@@ -729,6 +738,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 
 					if (!requiresMigration) {
 						this.fields = reorderedFields;
+						this.fieldsPrimitive = reorderedFieldsPrimitive;
 						this.fieldSerializers = reorderedFieldSerializers;
 
 						this.registeredClasses = reorderedRegisteredSubclassesToClasstags;
@@ -1048,7 +1058,9 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 			// the deserialized Field may be null if the field no longer exists in the POJO;
 			// in this case, when de-/serializing and copying instances using this serializer
 			// instance, the missing fields will simply be skipped
-			fields[i] = FieldSerializer.deserializeField(in);
+			FlinkField flinkField = FieldSerializer.deserializeField(in);
+			fields[i] = flinkField.getWrappedField();
+			fieldsPrimitive[i] = flinkField.isPrimitive();
 		}
 
 		cl = Thread.currentThread().getContextClassLoader();

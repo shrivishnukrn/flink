@@ -151,7 +151,7 @@ public final class PojoComparator<T> extends CompositeTypeComparator<T> implemen
 		int numKeyFields = in.readInt();
 		keyFields = new Field[numKeyFields];
 		for (int i = 0; i < numKeyFields; i++) {
-			keyFields[i] = FieldSerializer.deserializeField(in);
+			keyFields[i] = FieldSerializer.deserializeField(in).getWrappedField();
 		}
 	}
 
