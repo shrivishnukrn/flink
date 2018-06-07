@@ -42,7 +42,7 @@ public interface OneInputStreamOperator<IN, OUT> extends StreamOperator<OUT> {
 	void processElement(StreamRecord<IN> element) throws Exception;
 
 	default void processBatch(StreamRecordBatch<IN> batch) throws Exception {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException("processBatch is not supported yet in [" + this + "]");
 	}
 
 	/**

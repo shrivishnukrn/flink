@@ -22,6 +22,7 @@ import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
 /**
@@ -54,6 +55,15 @@ public class StreamSink<IN> extends AbstractUdfStreamOperator<Object, SinkFuncti
 	public void processElement(StreamRecord<IN> element) throws Exception {
 		sinkContext.element = element;
 		userFunction.invoke(element.getValue(), sinkContext);
+	}
+
+	@Override
+	public void processBatch(StreamRecordBatch<IN> batch) throws Exception {
+		for (int i = 0; i < batch.getNumberOfElements(); i++) {
+			StreamRecord<IN> element = batch.get(i);
+			setKeyContextElement1(element);
+			processElement(element);
+		}
 	}
 
 	@Override

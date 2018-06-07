@@ -39,6 +39,10 @@ public final class StreamRecordBatch<T> extends RecordBatch<StreamRecord<T>> {
 		batch[index++].replace(element);
 	}
 
+	public void addStreamRecord(StreamRecord<T> element) {
+		batch[index++] = element;
+	}
+
 	public void clear() {
 		for (int i = 0; i < index; i++) {
 			batch[i].replace(null);

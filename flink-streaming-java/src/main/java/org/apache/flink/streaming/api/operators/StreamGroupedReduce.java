@@ -23,6 +23,7 @@ import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 
 /**
  * A {@link StreamOperator} for executing a {@link ReduceFunction} on a
@@ -66,5 +67,26 @@ public class StreamGroupedReduce<IN> extends AbstractUdfStreamOperator<IN, Reduc
 			values.update(value);
 			output.collect(element.replace(value));
 		}
+	}
+
+	@Override
+	public void processBatch(StreamRecordBatch<IN> batch) throws Exception {
+		for (int i = 0; i < batch.getNumberOfElements(); i++) {
+			StreamRecord<IN> element = batch.get(i);
+			setKeyContextElement1(element);
+
+			IN value = element.getValue();
+			IN currentValue = values.value();
+
+			if (currentValue != null) {
+				IN reduced = userFunction.reduce(currentValue, value);
+				values.update(reduced);
+				element.replace(reduced);
+			} else {
+				values.update(value);
+				element.replace(value);
+			}
+		}
+		output.collect(batch);
 	}
 }

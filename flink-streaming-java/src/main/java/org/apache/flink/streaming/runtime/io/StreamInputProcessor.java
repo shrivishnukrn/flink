@@ -41,10 +41,10 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
-import org.apache.flink.streaming.runtime.streamrecord.StreamBatch;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.streamstatus.StatusWatermarkValve;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
@@ -111,7 +111,7 @@ public class StreamInputProcessor<IN> {
 
 	private boolean isFinished;
 
-	private final StreamBatch<StreamRecord<IN>> batch;
+	private final StreamRecordBatch<IN> batch;
 
 	@SuppressWarnings("unchecked")
 	public StreamInputProcessor(
@@ -127,7 +127,7 @@ public class StreamInputProcessor<IN> {
 			TaskIOMetricGroup metrics,
 			WatermarkGauge watermarkGauge) throws IOException {
 
-		this.batch = new StreamBatch<>(RuntimeContext.MAX_BATCH);
+		this.batch = new StreamRecordBatch<>(RuntimeContext.MAX_BATCH);
 		InputGate inputGate = InputGateUtil.createInputGate(inputGates);
 
 		this.barrierHandler = InputProcessorUtil.createCheckpointBarrierHandler(
@@ -204,11 +204,10 @@ public class StreamInputProcessor<IN> {
 					} else {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
-
 						if (batch.isFull()) {
 							finishBatch();
 						}
-						batch.add(record);
+						batch.addStreamRecord(record);
 						return true;
 					}
 				}
@@ -244,12 +243,8 @@ public class StreamInputProcessor<IN> {
 
 	private void finishBatch() throws Exception {
 		synchronized (lock) {
-			for (int i = 0; i < batch.getNumberOfElements(); i++) {
-				StreamRecord<IN> record = batch.get(i);
-				numRecordsIn.inc();
-				streamOperator.setKeyContextElement1(record);
-				streamOperator.processElement(record);
-			}
+			numRecordsIn.inc(batch.getNumberOfElements());
+			streamOperator.processBatch(batch);
 		}
 		batch.clear();
 	}
