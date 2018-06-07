@@ -276,5 +276,16 @@ public interface SourceFunction<T> extends Function, Serializable {
 		 * This method is called by the system to shut down the context.
 		 */
 		void close();
+
+		default void collectBatch(T element) {
+			collect(element);
+		}
+
+		default void collectBatchWithTimestamp(T element, long timestamp) {
+			collectWithTimestamp(element, timestamp);
+		}
+
+		default void finishBatch() {
+		}
 	}
 }
