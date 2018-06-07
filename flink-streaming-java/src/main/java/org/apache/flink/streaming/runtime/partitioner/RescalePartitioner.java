@@ -45,7 +45,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  * @param <T> Type of the elements in the Stream being rescaled
  */
 @Internal
-public class RescalePartitioner<T> extends StreamPartitioner<T> {
+public class RescalePartitioner<T> implements StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
 	private final int[] returnArray = new int[] {-1};

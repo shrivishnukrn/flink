@@ -27,7 +27,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  * @param <T> Type of the elements in the Stream being broadcast
  */
 @Internal
-public class BroadcastPartitioner<T> extends StreamPartitioner<T> {
+public class BroadcastPartitioner<T> implements StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
 	int[] returnArray;

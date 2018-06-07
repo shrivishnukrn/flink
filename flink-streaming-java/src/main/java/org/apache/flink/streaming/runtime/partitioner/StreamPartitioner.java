@@ -28,9 +28,8 @@ import java.io.Serializable;
  * A special {@link ChannelSelector} for use in streaming programs.
  */
 @Internal
-public abstract class StreamPartitioner<T> implements
-		ChannelSelector<SerializationDelegate<StreamRecord<T>>>, Serializable {
-	private static final long serialVersionUID = 1L;
+public interface StreamPartitioner<T> extends ChannelSelector<SerializationDelegate<StreamRecord<T>>>, Serializable {
+	long serialVersionUID = 1L;
 
-	public abstract StreamPartitioner<T> copy();
+	StreamPartitioner<T> copy();
 }

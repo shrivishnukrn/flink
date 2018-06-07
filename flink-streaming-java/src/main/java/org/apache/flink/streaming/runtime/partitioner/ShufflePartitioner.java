@@ -31,7 +31,7 @@ import java.util.Random;
  *            Type of the Tuple
  */
 @Internal
-public class ShufflePartitioner<T> extends StreamPartitioner<T> {
+public class ShufflePartitioner<T> implements StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
 	private Random random = new Random();

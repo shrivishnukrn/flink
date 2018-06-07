@@ -19,12 +19,13 @@
 package org.apache.flink.runtime.io.network.api.writer;
 
 /**
- * The {@link ChannelSelector} determines to which logical channels a record
+ * The {@link SimpleChannelSelector} determines to which logical channels a record
  * should be written to.
  *
  * @param <T> the type of record which is sent through the attached output gate
  */
-public interface ChannelSelector<T> {
+public abstract class SimpleChannelSelector<T> implements ChannelSelector<T> {
+	private final int[] channel = new int[1];
 
 	/**
 	 * Returns the logical channel indexes, to which the given record should be
@@ -35,5 +36,11 @@ public interface ChannelSelector<T> {
 	 * @return a (possibly empty) array of integer numbers which indicate the indices of the output channels through
 	 * which the record shall be forwarded
 	 */
-	int[] selectChannels(T record, int numChannels);
+	public abstract int selectChannel(T record, int numChannels);
+
+	@Override
+	public final int[] selectChannels(T record, int numChannels) {
+		channel[0] = selectChannel(record, numChannels);
+		return channel;
+	}
 }

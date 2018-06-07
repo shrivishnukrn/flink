@@ -18,37 +18,16 @@
 package org.apache.flink.streaming.runtime.partitioner;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.runtime.io.network.api.writer.ChannelSelector;
+import org.apache.flink.runtime.io.network.api.writer.SimpleChannelSelector;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import java.io.Serializable;
+
 /**
- * Partitioner that distributes the data equally by cycling through the output
- * channels.
- *
- * @param <T> Type of the elements in the Stream being rebalanced
+ * A special {@link ChannelSelector} for use in streaming programs.
  */
 @Internal
-public class RebalancePartitioner<T> implements StreamPartitioner<T> {
-	private static final long serialVersionUID = 1L;
-
-	private final int[] returnArray = new int[] {-1};
-
-	@Override
-	public int[] selectChannels(SerializationDelegate<StreamRecord<T>> record,
-			int numberOfOutputChannels) {
-		int newChannel = ++this.returnArray[0];
-		if (newChannel >= numberOfOutputChannels) {
-			this.returnArray[0] = 0;
-		}
-		return this.returnArray;
-	}
-
-	public StreamPartitioner<T> copy() {
-		return this;
-	}
-
-	@Override
-	public String toString() {
-		return "REBALANCE";
-	}
+public abstract class SimpleStreamPartitioner<T> extends SimpleChannelSelector<SerializationDelegate<StreamRecord<T>>> implements Serializable, StreamPartitioner<T> {
 }

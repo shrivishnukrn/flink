@@ -55,7 +55,7 @@ import java.util.Map;
  */
 @Public
 public interface RuntimeContext {
-	int MAX_BATCH = 1000;
+	int MAX_BATCH = 1024;
 
 	/**
 	 * Returns the name of the task in which the UDF runs, as assigned during plan construction.

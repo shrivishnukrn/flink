@@ -27,7 +27,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  * @param <T> Type of the elements in the Stream
  */
 @Internal
-public class ForwardPartitioner<T> extends StreamPartitioner<T> {
+public class ForwardPartitioner<T> implements StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
 	private final int[] returnArray = new int[] {0};

@@ -32,7 +32,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
  *            Type of the data
  */
 @Internal
-public class CustomPartitionerWrapper<K, T> extends StreamPartitioner<T> {
+public class CustomPartitionerWrapper<K, T> implements StreamPartitioner<T> {
 	private static final long serialVersionUID = 1L;
 
 	private final int[] returnArray = new int[1];
