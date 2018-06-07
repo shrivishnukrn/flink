@@ -27,7 +27,9 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.ShortSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
+import org.apache.flink.api.common.typeutils.base.array.BooleanPrimitiveArraySerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.typeutils.runtime.PojoSerializer;
 import org.apache.flink.types.StringValue;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -149,14 +151,14 @@ public class PojoSerializerGenerator<T> {
 
 		final String classTerm = createTypeTerm(clazz);
 		return
-			"public void serialize(" + classTerm + " value, DataOutputView target) throws IOException {\n" +
+			"public void serialize(" + classTerm + " pojo, DataOutputView target) throws IOException {\n" +
 			// handle null values (but only for top-level serializer)
-			"  if (value == null) {\n" +
+			"  if (pojo == null) {\n" +
 			"    target.writeByte(" + IS_NULL + ");\n" +
 			"    return;\n" +
 			"  }\n" +
 			// check for subclass
-			"  final Class actualClass = value.getClass();\n" +
+			"  final Class actualClass = pojo.getClass();\n" +
 			"  if (clazz == actualClass) {\n" +
 			"    target.writeByte(" + GENERATED + ");\n" +
 			"    " + indent(Collections.singleton(sb.toString()), 4) +
@@ -195,7 +197,7 @@ public class PojoSerializerGenerator<T> {
 		} else if (fieldSerializer.getClass() == ByteSerializer.class) {
 			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeByte");
 		} else if (fieldSerializer.getClass() == ShortSerializer.class) {
-			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeBoolean");
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeShort");
 		} else if (fieldSerializer.getClass() == IntSerializer.class) {
 			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeInt");
 		} else if (fieldSerializer.getClass() == LongSerializer.class) {
@@ -206,25 +208,39 @@ public class PojoSerializerGenerator<T> {
 			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeDouble");
 		} else if (fieldSerializer.getClass() == StringSerializer.class) {
 			addSerializerStringCode(sb, fieldAccess);
-		} else {
+		}
+//		else if (fieldSerializer.getClass() == BooleanPrimitiveArraySerializer.class) {
+//			addSerializerBasicArrayCode(sb, fieldAccess, true, "writeBoolean");
+//		}
+		else {
 			addSerializerCallingCode(sb, fieldAccess, fieldIdx);
 		}
 	}
 
 	private static void addSerializerCallingCode(StringBuilder sb, Tuple2<String, String> fieldAccess, int fieldIdx) {
 		final String fieldValueName = newName("fieldValue");
-		addSerializerNullableCode(sb, fieldAccess, fieldValueName, "fieldSerializers.s");
+		addSerializerNullableCode(sb, fieldAccess, fieldValueName,
+			"fieldSerializers[" + fieldIdx + "].serialize(" + fieldValueName + ", target)");
 	}
 
-	private static void addSerializerBasicCode(StringBuilder sb, Tuple2<String, String> fieldAccess, boolean isPrimitive, String method) {
+	private static void addSerializerBasicCode(StringBuilder sb, Tuple2<String, String> fieldAccess,
+			boolean isPrimitive, String method) {
 		if (isPrimitive) {
-			final String serializationCode = "target.write" + method + "(" + fieldAccess.f1 + ");";
+			final String serializationCode = "target." + method + "(" + fieldAccess.f1 + ");";
 			sb.append(serializationCode);
 		} else {
 			final String fieldValueName = newName("fieldValue");
 			addSerializerNullableCode(sb, fieldAccess, fieldValueName, "target." + method + "(" + fieldValueName + ");");
 		}
 	}
+
+//	private static void addSerializerBasicArrayCode(StringBuilder sb, Tuple2<String, String> fieldAccess,
+//			boolean isPrimitive, String method) {
+//		final String fieldValueName = newName("fieldValue");
+//		final String serializationCode =
+//			"";
+//		addSerializerNullableCode(sb, fieldAccess, fieldValueName, "target." + method + "(" + fieldValueName + ");");
+//	}
 
 	private static void addSerializerStringCode(StringBuilder sb, Tuple2<String, String> fieldAccess) {
 		final String fieldValueName = newName("fieldValue");

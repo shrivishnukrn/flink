@@ -764,7 +764,8 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 								reorderedFieldSerializers,
 								reorderedRegisteredSubclassesToClasstags,
 								reorderedRegisteredSubclassSerializers,
-								rebuiltCache));
+								rebuiltCache,
+								generatedSerializer));
 					}
 				}
 			}
