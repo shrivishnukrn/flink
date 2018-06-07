@@ -526,7 +526,6 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 			}
 		}
 
-
 		@Override
 		public void emitWatermark(Watermark mark) {
 			try {

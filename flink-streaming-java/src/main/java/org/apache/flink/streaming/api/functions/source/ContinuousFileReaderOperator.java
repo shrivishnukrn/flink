@@ -19,6 +19,7 @@ package org.apache.flink.streaming.api.functions.source;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.io.CheckpointableInputFormat;
 import org.apache.flink.api.common.io.FileInputFormat;
 import org.apache.flink.api.common.state.ListState;
@@ -138,7 +139,7 @@ public class ContinuousFileReaderOperator<OUT> extends AbstractStreamOperator<OU
 			output,
 			watermarkInterval,
 			-1,
-			getRuntimeContext().getMaxBatchSize());
+			RuntimeContext.MAX_BATCH);
 
 		// and initialize the split reading thread
 		this.reader = new SplitReader<>(format, serializer, readerContext, checkpointLock, restoredReaderState);

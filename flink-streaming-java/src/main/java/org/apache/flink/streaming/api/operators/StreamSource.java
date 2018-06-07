@@ -18,6 +18,7 @@
 package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -82,7 +83,7 @@ public class StreamSource<OUT, SRC extends SourceFunction<OUT>>
 			collector,
 			watermarkInterval,
 			-1,
-			getRuntimeContext().getMaxBatchSize());
+			RuntimeContext.MAX_BATCH);
 
 		try {
 			userFunction.run(ctx);

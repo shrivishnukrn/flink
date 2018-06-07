@@ -277,14 +277,17 @@ public interface SourceFunction<T> extends Function, Serializable {
 		 */
 		void close();
 
+		@PublicEvolving
 		default void collectBatch(T element) {
 			throw new UnsupportedOperationException();
 		}
 
+		@PublicEvolving
 		default void collectBatchWithTimestamp(T element, long timestamp) {
 			throw new UnsupportedOperationException();
 		}
 
+		@PublicEvolving
 		default void finishBatch() {
 			throw new UnsupportedOperationException();
 		}

@@ -218,8 +218,6 @@ public class RecordWriter<T extends IOReadableWritable> {
 				result = serializer.continueWritingWithNextBufferBuilder(bufferBuilder);
 			}
 			checkState(!serializer.hasSerializedData(), "All data should be written at once");
-
-
 		}
 		serializer.finishBatch();
 	}
