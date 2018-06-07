@@ -60,17 +60,17 @@ public final class BooleanSerializer extends TypeSerializerSingleton<Boolean> {
 
 	@Override
 	public void serialize(Boolean record, DataOutputView target) throws IOException {
-		target.writeBoolean(record.booleanValue());
+		target.writeBoolean(record);
 	}
 
 	@Override
 	public Boolean deserialize(DataInputView source) throws IOException {
-		return Boolean.valueOf(source.readBoolean());
+		return source.readBoolean();
 	}
 	
 	@Override
 	public Boolean deserialize(Boolean reuse, DataInputView source) throws IOException {
-		return Boolean.valueOf(source.readBoolean());
+		return source.readBoolean();
 	}
 
 	@Override

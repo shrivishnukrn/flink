@@ -19,9 +19,13 @@
 package org.apache.flink.api.java.typeutils.runtime.codegen;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.base.BooleanSerializer;
 import org.apache.flink.api.common.typeutils.base.ByteSerializer;
+import org.apache.flink.api.common.typeutils.base.DoubleSerializer;
+import org.apache.flink.api.common.typeutils.base.FloatSerializer;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
+import org.apache.flink.api.common.typeutils.base.ShortSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.types.StringValue;
@@ -100,14 +104,21 @@ public class PojoSerializerGenerator<T> {
 		bodyMembers.add(createDeserialize());
 		bodyMembers.add(createDeserializeWithReuse());
 
+		final String typeSerializerTerm = createTypeTerm(TypeSerializer.class);
 		return
-			"public final class " + name + " extends " + TypeSerializer.class.getName() + "{\n" +
+			"public final class " + name + " extends " + typeSerializerTerm + "{\n" +
 			"\n" +
-			"  private final Class clazz;" +
+			"  private final Class clazz;\n" +
+			"  private final " + typeSerializerTerm + " fieldSerializers;\n" +
+			"  private final java.lang.reflect.Field[] fields;\n" +
+			"  private final boolean[] fieldsPrimitive;\n" +
 			"  " + indent(headerMembers, 2) + "\n" +
 			"\n" +
-			"  public " + name + "(Class clazz) {\n" +
+			"  public " + name + "(Class clazz, " + typeSerializerTerm + "[] fieldSerializers, java.lang.reflect.Field[] fields, boolean[] fieldsPrimitive) {\n" +
 			"    this.clazz = clazz;\n" +
+			"    this.fieldSerializers = fieldSerializers;\n" +
+			"    this.fields = fields;\n" +
+			"    this.fieldsPrimitive = fieldsPrimitive;\n" +
 			"    " + indent(headerMembersInit, 4) +
 			"  }\n" +
 			"\n" +
@@ -132,22 +143,22 @@ public class PojoSerializerGenerator<T> {
 		final StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < fields.length; i++) {
 			if (fields[i] != null) {
-				addSerializerCode(headerMembers, sb, fields[i], fieldSerializers[i]);
+				addSerializerCode(headerMembers, sb, i);
 			}
 		}
 
+		final String classTerm = createTypeTerm(clazz);
 		return
-			"public void serialize(Object value, DataOutputView target) throws IOException {\n" +
+			"public void serialize(" + classTerm + " value, DataOutputView target) throws IOException {\n" +
 			// handle null values (but only for top-level serializer)
 			"  if (value == null) {\n" +
 			"    target.writeByte(" + IS_NULL + ");\n" +
 			"    return;\n" +
 			"  }\n" +
 			// check for subclass
-			"  final Class<?> actualClass = value.getClass();\n" +
+			"  final Class actualClass = value.getClass();\n" +
 			"  if (clazz == actualClass) {\n" +
 			"    target.writeByte(" + GENERATED + ");\n" +
-			"    final " + clazz.getName() + " pojo = (" + clazz.getName() + ") value;\n" +
 			"    " + indent(Collections.singleton(sb.toString()), 4) +
 			"  } else {\n" +
 			"    throw new UnsupportedOperationException();\n" +
@@ -174,38 +185,57 @@ public class PojoSerializerGenerator<T> {
 					.collect(Collectors.toList()));
 	}
 
-	private static void addSerializerCode(LinkedHashSet<String> headerMembers, StringBuilder sb, Field field, TypeSerializer<?> fieldSerializer) {
+	private void addSerializerCode(LinkedHashSet<String> headerMembers, StringBuilder sb, int fieldIdx) {
+		final Field field = fields[fieldIdx];
+		final TypeSerializer<?> fieldSerializer = fieldSerializers[fieldIdx];
 		final boolean isPrimitive = field.getType().isPrimitive();
 		final Tuple2<String, String> fieldAccess = createFieldReadAccess(headerMembers, field);
-		if (fieldSerializer.getClass() == IntSerializer.class) {
-			addSerializerIntCode(sb, fieldAccess, isPrimitive);
+		if (fieldSerializer.getClass() == BooleanSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeBoolean");
+		} else if (fieldSerializer.getClass() == ByteSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeByte");
+		} else if (fieldSerializer.getClass() == ShortSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeBoolean");
+		} else if (fieldSerializer.getClass() == IntSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeInt");
+		} else if (fieldSerializer.getClass() == LongSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeLong");
+		} else if (fieldSerializer.getClass() == FloatSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeFloat");
+		} else if (fieldSerializer.getClass() == DoubleSerializer.class) {
+			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeDouble");
 		} else if (fieldSerializer.getClass() == StringSerializer.class) {
 			addSerializerStringCode(sb, fieldAccess);
 		} else {
-			throw new UnsupportedOperationException();
+			addSerializerCallingCode(sb, fieldAccess, fieldIdx);
 		}
 	}
 
-	private static void addSerializerIntCode(StringBuilder sb, Tuple2<String, String> field, boolean isPrimitive) {
+	private static void addSerializerCallingCode(StringBuilder sb, Tuple2<String, String> fieldAccess, int fieldIdx) {
+		final String fieldValueName = newName("fieldValue");
+		addSerializerNullableCode(sb, fieldAccess, fieldValueName, "fieldSerializers.s");
+	}
+
+	private static void addSerializerBasicCode(StringBuilder sb, Tuple2<String, String> fieldAccess, boolean isPrimitive, String method) {
 		if (isPrimitive) {
-			final String serializationCode = "target.writeInt(" + field.f1 + ");";
+			final String serializationCode = "target.write" + method + "(" + fieldAccess.f1 + ");";
 			sb.append(serializationCode);
 		} else {
 			final String fieldValueName = newName("fieldValue");
-			addSerializerNullableCode(sb, field, fieldValueName, "target.writeInt(" + fieldValueName + ");");
+			addSerializerNullableCode(sb, fieldAccess, fieldValueName, "target." + method + "(" + fieldValueName + ");");
 		}
 	}
 
-	private static void addSerializerStringCode(StringBuilder sb, Tuple2<String, String> field) {
+	private static void addSerializerStringCode(StringBuilder sb, Tuple2<String, String> fieldAccess) {
 		final String fieldValueName = newName("fieldValue");
 		final String serializationCode = createTypeTerm(StringValue.class) + ".writeString(" + fieldValueName + ");";
-		addSerializerNullableCode(sb, field, fieldValueName, serializationCode);
+		addSerializerNullableCode(sb, fieldAccess, fieldValueName, serializationCode);
 	}
 
-	private static void addSerializerNullableCode(StringBuilder sb, Tuple2<String, String> field,
+	private static void addSerializerNullableCode(StringBuilder sb, Tuple2<String, String> fieldAccess,
 			String fieldValueName, String serializationCode) {
 		final String code =
-			"final " + field.f0 + " " + fieldValueName + " = " + field.f1 + ";\n" +
+			"final " + fieldAccess.f0 + " " + fieldValueName + " = " + fieldAccess.f1 + ";\n" +
 			"if (" + fieldValueName + " == null) {\n" +
 			"  target.writeBoolean(true);\n" +
 			"} else {\n" +
