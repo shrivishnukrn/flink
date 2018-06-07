@@ -42,24 +42,20 @@ import org.apache.flink.api.common.typeutils.TypeSerializerSerializationUtil;
 import org.apache.flink.api.common.typeutils.UnloadableDummyTypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
+import org.apache.flink.api.java.typeutils.runtime.codegen.PojoSerializerGenerator;
 import org.apache.flink.core.memory.ByteArrayInputStreamWithPos;
 import org.apache.flink.core.memory.ByteArrayOutputStreamWithPos;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 @Internal
 public final class PojoSerializer<T> extends TypeSerializer<T> {
-
-	// Flags for the header
-	private static byte IS_NULL = 1;
-	private static byte NO_SUBCLASS = 2;
-	private static byte IS_SUBCLASS = 4;
-	private static byte IS_TAGGED_SUBCLASS = 8;
 
 	private static final long serialVersionUID = 1L;
 
@@ -100,6 +96,10 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 	 */
 	private transient HashMap<Class<?>, TypeSerializer<?>> subclassSerializerCache;
 
+	private final Class<TypeSerializer<T>> generatedSerializer;
+
+	private final transient TypeSerializer<T> generatedSerializerInstance;
+
 	// --------------------------------------------------------------------------------------------
 
 	/**
@@ -126,10 +126,6 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.numFields = fieldSerializers.length;
 		this.executionConfig = checkNotNull(executionConfig);
 
-		for (int i = 0; i < numFields; i++) {
-			this.fields[i].setAccessible(true);
-		}
-
 		cl = Thread.currentThread().getContextClassLoader();
 
 		// We only want those classes that are not our own class and are actually sub-classes.
@@ -140,15 +136,25 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.registeredSerializers = createRegisteredSubclassSerializers(registeredSubclasses, executionConfig);
 
 		this.subclassSerializerCache = new HashMap<>();
+
+		// generate serializer
+		final PojoSerializerGenerator<T> generator = new PojoSerializerGenerator<>(clazz, fields, fieldSerializers);
+		try {
+			generatedSerializer = generator.generate(cl);
+			generatedSerializerInstance = generatedSerializer.getConstructor(Class.class).newInstance(clazz);
+		} catch (Exception e) {
+			throw new FlinkRuntimeException("Could not generate PojoSerializer. This should not happen.");
+		}
 	}
 
-	public PojoSerializer(
+	private PojoSerializer(
 			Class<T> clazz,
 			Field[] fields,
 			TypeSerializer<Object>[] fieldSerializers,
 			LinkedHashMap<Class<?>, Integer> registeredClasses,
 			TypeSerializer<?>[] registeredSerializers,
-			HashMap<Class<?>, TypeSerializer<?>> subclassSerializerCache) {
+			HashMap<Class<?>, TypeSerializer<?>> subclassSerializerCache,
+			Class<TypeSerializer<T>> generatedSerializer) {
 
 		this.clazz = checkNotNull(clazz);
 		this.fields = checkNotNull(fields);
@@ -157,6 +163,13 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.registeredClasses = checkNotNull(registeredClasses);
 		this.registeredSerializers = checkNotNull(registeredSerializers);
 		this.subclassSerializerCache = checkNotNull(subclassSerializerCache);
+		this.generatedSerializer = generatedSerializer;
+
+		try {
+			generatedSerializerInstance = generatedSerializer.getConstructor(Class.class).newInstance(clazz);
+		} catch (Exception e) {
+			throw new FlinkRuntimeException("Could not instantiate PojoSerializer. This should not happen.");
+		}
 
 		this.executionConfig = null;
 	}
@@ -180,7 +193,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		}
 
 		if (stateful) {
-			return new PojoSerializer<T>(clazz, duplicateFieldSerializers, fields, executionConfig);
+			return new PojoSerializer<>(clazz, duplicateFieldSerializers, fields, executionConfig);
 		} else {
 			return this;
 		}
@@ -305,40 +318,33 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 
 
 	@Override
-	@SuppressWarnings({"unchecked", "rawtypes"})
 	public void serialize(T value, DataOutputView target) throws IOException {
-		int flags = 0;
-		// handle null values
-		if (value == null) {
-			flags |= IS_NULL;
-			target.writeByte(flags);
-			return;
-		}
-
-		Integer subclassTag = -1;
-		Class<?> actualClass = value.getClass();
-		TypeSerializer subclassSerializer = null;
-		if (clazz != actualClass) {
-			subclassTag = registeredClasses.get(actualClass);
-			if (subclassTag != null) {
-				flags |= IS_TAGGED_SUBCLASS;
-				subclassSerializer = registeredSerializers[subclassTag];
-			} else {
-				flags |= IS_SUBCLASS;
-				subclassSerializer = getSubclassSerializer(actualClass);
-			}
-		} else {
-			flags |= NO_SUBCLASS;
-		}
-
-		target.writeByte(flags);
-
-		// if its a registered subclass, write the class tag id, otherwise write the full classname
-		if ((flags & IS_SUBCLASS) != 0) {
-			target.writeUTF(actualClass.getName());
-		} else if ((flags & IS_TAGGED_SUBCLASS) != 0) {
-			target.writeByte(subclassTag);
-		}
+		generatedSerializerInstance.serialize(value, target);
+// TODO
+//		Integer subclassTag = -1;
+//		Class<?> actualClass = value.getClass();
+//		TypeSerializer subclassSerializer = null;
+//		if (clazz != actualClass) {
+//			subclassTag = registeredClasses.get(actualClass);
+//			if (subclassTag != null) {
+//				flags |= IS_TAGGED_SUBCLASS;
+//				subclassSerializer = registeredSerializers[subclassTag];
+//			} else {
+//				flags |= IS_SUBCLASS;
+//				subclassSerializer = getSubclassSerializer(actualClass);
+//			}
+//		} else {
+//			flags |= NO_SUBCLASS;
+//		}
+//
+//		target.writeByte(flags);
+//
+//		// if its a registered subclass, write the class tag id, otherwise write the full classname
+//		if ((flags & IS_SUBCLASS) != 0) {
+//			target.writeUTF(actualClass.getName());
+//		} else if ((flags & IS_TAGGED_SUBCLASS) != 0) {
+//			target.writeByte(subclassTag);
+//		}
 
 		// if its a subclass, use the corresponding subclass serializer,
 		// otherwise serialize each field with our field serializers
