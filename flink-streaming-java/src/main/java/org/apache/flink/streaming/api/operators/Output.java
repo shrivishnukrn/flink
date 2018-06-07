@@ -22,6 +22,7 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
@@ -54,6 +55,10 @@ public interface Output<T> extends Collector<T> {
 	void emitLatencyMarker(LatencyMarker latencyMarker);
 
 	default void finishBatch() {
+		throw new UnsupportedOperationException();
+	}
+
+	default <T> void collect(StreamRecordBatch<T> batch) {
 		throw new UnsupportedOperationException();
 	}
 }

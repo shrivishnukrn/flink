@@ -23,6 +23,7 @@ import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamBatch;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
@@ -113,13 +114,13 @@ public class StreamSourceContexts {
 		private final Object lock;
 		private final Output<StreamRecord<T>> output;
 		private final StreamRecord<T> reuse;
-		private final StreamBatch<T> batch;
+		private final StreamRecordBatch<T> batch;
 
 		private NonTimestampContext(Object checkpointLock, Output<StreamRecord<T>> output, int maxBatchSize) {
 			this.lock = Preconditions.checkNotNull(checkpointLock, "The checkpoint lock cannot be null.");
 			this.output = Preconditions.checkNotNull(output, "The output cannot be null.");
 			this.reuse = new StreamRecord<>(null);
-			this.batch = new StreamBatch<>(maxBatchSize);
+			this.batch = new StreamRecordBatch<>(maxBatchSize);
 		}
 
 		@Override
@@ -132,21 +133,21 @@ public class StreamSourceContexts {
 		@Override
 		public void collectBatch(T element) {
 			if (!batch.isFull()) {
-				batch.add(element);
+				batch.addStreamRecord(element);
 				return;
 			}
 			finishBatch();
-			batch.add(element);
+			batch.addStreamRecord(element);
 		}
 
 		@Override
 		public void finishBatch() {
 			synchronized (lock) {
-				for (int i = 0; i < batch.getNumberOfElements(); i++) {
-					T element = batch.get(i);
-					output.collect(reuse.replace(element));
-				}
-				output.finishBatch();
+//				for (int i = 0; i < batch.getNumberOfElements(); i++) {
+//					T element = batch.get(i);
+//					output.collect(reuse.replace(element));
+//				}
+				output.collect(batch);
 			}
 			batch.clear();
 		}

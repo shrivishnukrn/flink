@@ -28,6 +28,8 @@ import org.apache.flink.runtime.io.network.api.serialization.SpanningRecordSeria
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.operators.RecordBatch;
+import org.apache.flink.runtime.plugable.SerializationDelegate;
 import org.apache.flink.util.XORShiftRandom;
 
 import java.io.IOException;
@@ -98,6 +100,15 @@ public class RecordWriter<T extends IOReadableWritable> {
 			serializers[i] = new SpanningRecordSerializer<T>();
 			bufferBuilders[i] = Optional.empty();
 		}
+	}
+
+	public <X> void emit(RecordBatch<X> batch, SerializationDelegate serializationDelegate) throws IOException, InterruptedException {
+		for (int i = 0; i < batch.getNumberOfElements(); i++) {
+			X record = batch.get(i);
+			serializationDelegate.setInstance(record);
+			emit((T) serializationDelegate);
+		}
+		finishBatch();
 	}
 
 	public void emit(T record) throws IOException, InterruptedException {

@@ -58,6 +58,7 @@ import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.streaming.util.LatencyStats;
@@ -689,6 +690,12 @@ public abstract class AbstractStreamOperator<OUT>
 		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
 			numRecordsOut.inc();
 			output.collect(outputTag, record);
+		}
+
+		@Override
+		public <T> void collect(StreamRecordBatch<T> batch) {
+			numRecordsOut.inc(batch.getNumberOfElements());
+			output.collect(batch);
 		}
 
 		@Override

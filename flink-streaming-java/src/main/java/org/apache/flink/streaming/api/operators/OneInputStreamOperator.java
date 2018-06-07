@@ -22,6 +22,7 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 
 /**
  * Interface for stream operators with one input. Use
@@ -39,6 +40,10 @@ public interface OneInputStreamOperator<IN, OUT> extends StreamOperator<OUT> {
 	 * This method is guaranteed to not be called concurrently with other methods of the operator.
 	 */
 	void processElement(StreamRecord<IN> element) throws Exception;
+
+	default void processBatch(StreamRecordBatch<IN> batch) throws Exception {
+		throw new UnsupportedOperationException();
+	}
 
 	/**
 	 * Processes a {@link Watermark}.

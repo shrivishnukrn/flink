@@ -46,6 +46,7 @@ import org.apache.flink.streaming.runtime.io.StreamRecordWriter;
 import org.apache.flink.streaming.runtime.metrics.WatermarkGauge;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusMaintainer;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
@@ -474,6 +475,16 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 		}
 
 		@Override
+		public <T> void collect(StreamRecordBatch<T> batch) {
+			if (this.outputTag != null) {
+				// we are only responsible for emitting to the main input
+				return;
+			}
+
+			pushToOperator(batch);
+		}
+
+		@Override
 		public <X> void collect(OutputTag<X> outputTag, StreamRecord<X> record) {
 			if (this.outputTag == null || !this.outputTag.equals(outputTag)) {
 				// we are only responsible for emitting to the side-output specified by our
@@ -499,6 +510,22 @@ public class OperatorChain<OUT, OP extends StreamOperator<OUT>> implements Strea
 				throw new ExceptionInChainedOperatorException(e);
 			}
 		}
+
+		protected <X> void pushToOperator(StreamRecordBatch<X> batch) {
+			try {
+				// we know that the given outputTag matches our OutputTag so the record
+				// must be of the type that our operator expects.
+				@SuppressWarnings("unchecked")
+				StreamRecordBatch<T> castBatch = (StreamRecordBatch<T>) batch;
+
+				numRecordsIn.inc(castBatch.getNumberOfElements());
+				operator.processBatch(castBatch);
+			}
+			catch (Exception e) {
+				throw new ExceptionInChainedOperatorException(e);
+			}
+		}
+
 
 		@Override
 		public void emitWatermark(Watermark mark) {

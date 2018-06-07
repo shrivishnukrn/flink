@@ -20,6 +20,7 @@ package org.apache.flink.streaming.api.operators;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 
 /**
  * A {@link StreamOperator} for executing {@link MapFunction MapFunctions}.
@@ -39,5 +40,15 @@ public class StreamMap<IN, OUT>
 	@Override
 	public void processElement(StreamRecord<IN> element) throws Exception {
 		output.collect(element.replace(userFunction.map(element.getValue())));
+	}
+
+	@Override
+	public void processBatch(StreamRecordBatch<IN> batch) throws Exception {
+		for (int i = 0; i < batch.getNumberOfElements(); i++) {
+			StreamRecord<IN> element = batch.get(i);
+			setKeyContextElement1(element);
+			element.replace(userFunction.map(element.getValue()));
+		}
+		output.collect(batch);
 	}
 }

@@ -30,6 +30,7 @@ import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElement;
 import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.streamstatus.StreamStatusProvider;
 import org.apache.flink.streaming.runtime.tasks.OperatorChain;
@@ -90,6 +91,16 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 	}
 
 	@Override
+	public <T> void collect(StreamRecordBatch<T> batch) {
+		if (this.outputTag != null) {
+			// we are only responsible for emitting to the main input
+			return;
+		}
+
+		pushToRecordWriter(batch);
+	}
+
+	@Override
 	public void finishBatch() {
 		recordWriter.finishBatch();
 	}
@@ -110,6 +121,15 @@ public class RecordWriterOutput<OUT> implements OperatorChain.WatermarkGaugeExpo
 
 		try {
 			recordWriter.emit(serializationDelegate);
+		}
+		catch (Exception e) {
+			throw new RuntimeException(e.getMessage(), e);
+		}
+	}
+
+	private <X> void pushToRecordWriter(StreamRecordBatch<X> batch) {
+		try {
+			recordWriter.emit(batch, serializationDelegate);
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e.getMessage(), e);
