@@ -184,31 +184,20 @@ public class StreamInputProcessor<IN> {
 				if (result.isFullRecord()) {
 					StreamElement recordOrMark = deserializationDelegate.getInstance();
 
-					if (recordOrMark.isWatermark()) {
-						// handle watermark
-						finishBatch();
-						statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
-						continue;
-					} else if (recordOrMark.isStreamStatus()) {
-						// handle stream status
-						finishBatch();
-						statusWatermarkValve.inputStreamStatus(recordOrMark.asStreamStatus(), currentChannel);
-						continue;
-					} else if (recordOrMark.isLatencyMarker()) {
-						// handle latency marker
-						synchronized (lock) {
-							finishBatch();
-							streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
-						}
-						continue;
-					} else {
+					if (recordOrMark.isRecord()) {
 						// now we can do the actual processing
 						StreamRecord<IN> record = recordOrMark.asRecord();
 						if (batch.isFull()) {
 							finishBatch();
+							batch.addStreamRecord(record);
+							return true;
 						}
 						batch.addStreamRecord(record);
-						return true;
+						continue;
+					}
+					else {
+						processMark(recordOrMark);
+						continue;
 					}
 				}
 			}
@@ -238,6 +227,26 @@ public class StreamInputProcessor<IN> {
 				}
 				return false;
 			}
+		}
+	}
+
+	private void processMark(StreamElement recordOrMark) throws Exception {
+		if (recordOrMark.isWatermark()) {
+			// handle watermark
+			finishBatch();
+			statusWatermarkValve.inputWatermark(recordOrMark.asWatermark(), currentChannel);
+		} else if (recordOrMark.isStreamStatus()) {
+			// handle stream status
+			finishBatch();
+			statusWatermarkValve.inputStreamStatus(recordOrMark.asStreamStatus(), currentChannel);
+		} else if (recordOrMark.isLatencyMarker()) {
+			// handle latency marker
+			synchronized (lock) {
+				finishBatch();
+				streamOperator.processLatencyMarker(recordOrMark.asLatencyMarker());
+			}
+		} else {
+			throw new UnsupportedOperationException();
 		}
 	}
 
