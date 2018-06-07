@@ -27,6 +27,13 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.ShortSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
+import org.apache.flink.api.common.typeutils.base.array.BooleanPrimitiveArraySerializer;
+import org.apache.flink.api.common.typeutils.base.array.BytePrimitiveArraySerializer;
+import org.apache.flink.api.common.typeutils.base.array.DoublePrimitiveArraySerializer;
+import org.apache.flink.api.common.typeutils.base.array.FloatPrimitiveArraySerializer;
+import org.apache.flink.api.common.typeutils.base.array.IntPrimitiveArraySerializer;
+import org.apache.flink.api.common.typeutils.base.array.LongPrimitiveArraySerializer;
+import org.apache.flink.api.common.typeutils.base.array.ShortPrimitiveArraySerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.types.StringValue;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -238,11 +245,21 @@ public class PojoSerializerGenerator<T> {
 			addSerializerBasicCode(sb, fieldAccess, isPrimitive, "writeDouble");
 		} else if (fieldSerializer.getClass() == StringSerializer.class) {
 			addSerializerStringCode(sb, fieldAccess);
-		}
-//		else if (fieldSerializer.getClass() == BooleanPrimitiveArraySerializer.class) {
-//			addSerializerBasicArrayCode(sb, fieldAccess, true, "writeBoolean");
-//		}
-		else {
+		} else if (fieldSerializer.getClass() == BooleanPrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeBoolean");
+		} else if (fieldSerializer.getClass() == BytePrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeByte");
+		} else if (fieldSerializer.getClass() == ShortPrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeShort");
+		} else if (fieldSerializer.getClass() == IntPrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeInt");
+		} else if (fieldSerializer.getClass() == LongPrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeLong");
+		} else if (fieldSerializer.getClass() == FloatPrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeFloat");
+		} else if (fieldSerializer.getClass() == DoublePrimitiveArraySerializer.class) {
+			addSerializerBasicArrayCode(sb, fieldAccess, field.getType().getComponentType(), "writeDouble");
+		} else {
 			addSerializerCallingCode(sb, fieldAccess, fieldIdx);
 		}
 	}
@@ -264,13 +281,19 @@ public class PojoSerializerGenerator<T> {
 		}
 	}
 
-//	private static void addSerializerBasicArrayCode(StringBuilder sb, Tuple2<String, String> fieldAccess,
-//			boolean isPrimitive, String method) {
-//		final String fieldValueName = newName("fieldValue");
-//		final String serializationCode =
-//			"";
-//		addSerializerNullableCode(sb, fieldAccess, fieldValueName, "target." + method + "(" + fieldValueName + ");");
-//	}
+	private static void addSerializerBasicArrayCode(StringBuilder sb, Tuple2<String, String> fieldAccess,
+			Class<?> component, String method) {
+		final String componentTerm = createTypeTerm(component);
+		final String fieldValueName = newName("fieldValue");
+		final String lengthName = newName("length");
+		final String serializationCode =
+			"final int " + lengthName + " = " + fieldValueName + ".length;\n" +
+			"target.writeInt(len);\n" +
+			"for (final " + componentTerm + " c : " + fieldValueName + ") {\n" +
+			"  target." + method + "(c);\n" +
+			"}";
+		addSerializerNullableCode(sb, fieldAccess, fieldValueName, serializationCode);
+	}
 
 	private static void addSerializerStringCode(StringBuilder sb, Tuple2<String, String> fieldAccess) {
 		final String fieldValueName = newName("fieldValue");
