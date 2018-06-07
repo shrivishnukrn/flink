@@ -68,6 +68,7 @@ import org.apache.flink.streaming.api.windowing.triggers.TriggerResult;
 import org.apache.flink.streaming.api.windowing.windows.Window;
 import org.apache.flink.streaming.runtime.operators.windowing.functions.InternalWindowFunction;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecordBatch;
 import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
@@ -288,6 +289,11 @@ public class WindowOperator<K, IN, ACC, OUT, W extends Window>
 		triggerContext = null;
 		processContext = null;
 		windowAssignerContext = null;
+	}
+
+	@Override
+	public void processBatch(StreamRecordBatch<IN> batch) throws Exception {
+		processBatch2(batch);
 	}
 
 	@Override

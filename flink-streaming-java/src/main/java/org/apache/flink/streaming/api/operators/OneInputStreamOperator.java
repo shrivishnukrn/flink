@@ -45,6 +45,14 @@ public interface OneInputStreamOperator<IN, OUT> extends StreamOperator<OUT> {
 		throw new UnsupportedOperationException("processBatch is not supported yet in [" + this + "]");
 	}
 
+	default void processBatch2(StreamRecordBatch<IN> batch) throws Exception {
+		for (int i = 0; i < batch.getNumberOfElements(); i++) {
+			StreamRecord<IN> element = batch.get(i);
+			setKeyContextElement1(element);
+			processElement(element);
+		}
+	}
+
 	/**
 	 * Processes a {@link Watermark}.
 	 * This method is guaranteed to not be called concurrently with other methods of the operator.
