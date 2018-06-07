@@ -244,10 +244,8 @@ public class StreamInputProcessor<IN> {
 
 	private void finishBatch() throws Exception {
 		synchronized (lock) {
-			for (StreamRecord<IN> record: batch.getRecords()) {
-				if (record == null) {
-					break;
-				}
+			for (int i = 0; i < batch.getNumberOfElements(); i++) {
+				StreamRecord<IN> record = batch.get(i);
 				numRecordsIn.inc();
 				streamOperator.setKeyContextElement1(record);
 				streamOperator.processElement(record);

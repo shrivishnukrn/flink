@@ -19,8 +19,7 @@ package org.apache.flink.streaming.runtime.streamrecord;
 
 import org.apache.flink.annotation.Internal;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.lang.reflect.Array;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -29,33 +28,46 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @Internal
 public final class StreamBatch<T> {
-	private final ArrayList<T> batch;
+	private T[] batch;
 	private final int maxBatchSize;
 	private int index;
 
 	public StreamBatch(int maxBatchSize) {
 		checkState(maxBatchSize > 0);
 		this.maxBatchSize = maxBatchSize;
-		batch = new ArrayList<>(maxBatchSize);
+//		batch = new ArrayList<>(maxBatchSize);
 	}
 
 	public boolean isFull() {
-		return batch.size() >= maxBatchSize;
+		return index >= maxBatchSize;
 	}
 
 	public void add(T element) {
-		batch.add(element);
+//		batch.add(element);
+		if (batch == null) {
+			Class<?> aClass = element.getClass();
+			batch = (T[]) Array.newInstance(aClass, maxBatchSize);
+		}
+		batch[index++] = element;
 	}
 
-	public List<T> getRecords() {
-		return batch;
-	}
+//	public T[] getRecords() {
+//		return batch;
+//	}
 
 	public void clear() {
-		batch.clear();
-//		for (int i = 0; i < index; i++) {
-//			batch[i] = null;
-//		}
-//		index = 0;
+//		batch.clear();
+		for (int i = 0; i < index; i++) {
+			batch[i] = null;
+		}
+		index = 0;
+	}
+
+	public int getNumberOfElements() {
+		return index;
+	}
+
+	public T get(int i) {
+		return batch[i];
 	}
 }

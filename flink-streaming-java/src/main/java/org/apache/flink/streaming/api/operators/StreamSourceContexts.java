@@ -29,7 +29,6 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeCallback;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.util.Preconditions;
 
-import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -143,10 +142,8 @@ public class StreamSourceContexts {
 		@Override
 		public void finishBatch() {
 			synchronized (lock) {
-				for (T element: batch.getRecords()) {
-					if (element == null) {
-						break;
-					}
+				for (int i = 0; i < batch.getNumberOfElements(); i++) {
+					T element = batch.get(i);
 					output.collect(reuse.replace(element));
 				}
 				output.finishBatch();
@@ -483,11 +480,8 @@ public class StreamSourceContexts {
 					scheduleNextIdleDetectionTask();
 				}
 
-				List<T> records = batch.getRecords();
-				List<Long> timestamps2 = timestamps.getRecords();
-
-				for (int i = 0; i < records.size(); i++) {
-					processAndCollectWithTimestamp(records.get(i), timestamps2.get(i));
+				for (int i = 0; i < batch.getNumberOfElements(); i++) {
+					processAndCollectWithTimestamp(batch.get(i), timestamps.get(i));
 				}
 
 				batch.clear();
