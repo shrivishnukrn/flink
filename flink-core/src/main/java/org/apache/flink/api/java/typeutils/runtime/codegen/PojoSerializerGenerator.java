@@ -27,9 +27,7 @@ import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.ShortSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
-import org.apache.flink.api.common.typeutils.base.array.BooleanPrimitiveArraySerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.typeutils.runtime.PojoSerializer;
 import org.apache.flink.types.StringValue;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -103,7 +101,7 @@ public class PojoSerializerGenerator<T> {
 		bodyMembers.add(createCreateInstance());
 		bodyMembers.add(createCopyWithReuse());
 		bodyMembers.add(createSerialize(headerMembers));
-		bodyMembers.add(createDeserialize());
+		bodyMembers.add(createDeserialize(headerMembers));
 		bodyMembers.add(createDeserializeWithReuse());
 
 		final String typeSerializerTerm = createTypeTerm(TypeSerializer.class);
@@ -168,8 +166,40 @@ public class PojoSerializerGenerator<T> {
 			"}"; // TODO
 	}
 
-	private String createDeserialize() {
-		return ""; // TODO
+	private String createDeserialize(LinkedHashSet<String> headerMembers) {
+		// create field code for non-subclasses
+		final StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < fields.length; i++) {
+			if (fields[i] != null) {
+				addDeserializerCode(headerMembers, sb, i);
+			}
+		}
+
+		final String classTerm = createTypeTerm(clazz);
+		return
+			"public " + classTerm + " deserialize(DataInputView source) throws IOException {\n" +
+				"  int flags = source.readByte();\n" +
+				"  if ((flags & " + IS_NULL + ") != 0) {\n" +
+				"    return null;\n" +
+				"  }\n" +
+				"\n" +
+				"  " + classTerm + " target;\n" +
+				"\n" +
+				"  if ((flags & " + IS_SUBCLASS + ") != 0) {\n" +
+				"    throw new UnsupportedOperationException();\n" +
+				"  } else if ((flags & " + IS_TAGGED_SUBCLASS + ") != 0) {\n" +
+				"    throw new UnsupportedOperationException();\n" +
+				"  } else {\n" +
+				"    target = createInstance();\n" +
+				"    try {\n" +
+				"    " + indent(Collections.singleton(sb.toString()), 6) +
+				"    } catch (IllegalAccessException e) {\n" +
+				"      throw new IOException(\"Error during POJO copy, this should not happen since we check the fields before.\", e);\n" +
+				"    }\n" +
+				"  }\n" +
+				"\n" +
+				"  return target;\n" +
+				"  }"; // TODO
 	}
 
 	private String createDeserializeWithReuse() {
@@ -293,6 +323,132 @@ public class PojoSerializerGenerator<T> {
 				"}";
 			headerMembers.add(methodHandleCode);
 			fieldAccessExpr = "(" + fieldTypeTerm + ") " + methodHandleName + ".invokeExact(pojo);";
+		}
+		return Tuple2.of(fieldTypeTerm, fieldAccessExpr);
+	}
+
+	private void addDeserializerCode(LinkedHashSet<String> headerMembers, StringBuilder sb, int fieldIdx) {
+		final Field field = fields[fieldIdx];
+		final TypeSerializer<?> fieldSerializer = fieldSerializers[fieldIdx];
+		final boolean isPrimitive = fieldsPrimitive[fieldIdx];
+		final String fieldValueName = newName("fieldValue");
+		final Tuple2<String, String> fieldAccess = createFieldWriteAccess(headerMembers, field, fieldValueName);
+		if (fieldSerializer.getClass() == BooleanSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readBoolean");
+		} else if (fieldSerializer.getClass() == ByteSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readByte");
+		} else if (fieldSerializer.getClass() == ShortSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readBoolean");
+		} else if (fieldSerializer.getClass() == IntSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readInt");
+		} else if (fieldSerializer.getClass() == LongSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readLong");
+		} else if (fieldSerializer.getClass() == FloatSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readFloat");
+		} else if (fieldSerializer.getClass() == DoubleSerializer.class) {
+			addDeserializerBasicCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "readDouble");
+		} else if (fieldSerializer.getClass() == StringSerializer.class) {
+			addDeserializerStringCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive);
+		} else {
+			addDeserializerCallingCode(sb, fieldIdx, fieldValueName);
+		}
+	}
+
+	private void addDeserializerCallingCode(
+			StringBuilder sb,
+			int fieldIdx,
+			String fieldValueName) {
+		// non-generated code does not assume non-null for primitive types
+		Tuple2<String, String> fieldAccess = Tuple2.of("Object", "fields[" + fieldIdx + "].set(target, " + fieldValueName + ");");
+		addDeserializerNullableCode(sb, fieldIdx, fieldAccess, fieldValueName, false, "fieldSerializers[" + fieldIdx + "].deserialize(source)");
+	}
+
+	private void addDeserializerBasicCode(
+			StringBuilder sb,
+			int fieldIdx,
+			Tuple2<String, String> fieldAccess,
+			String fieldValueName,
+			boolean isPrimitive,
+			String method) {
+		addDeserializerNullableCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, "target." + method);
+	}
+
+	private void addDeserializerStringCode(
+			StringBuilder sb,
+			int fieldIdx,
+			Tuple2<String, String> fieldAccess,
+			String fieldValueName,
+			boolean isPrimitive) {
+		final String deserializationCode = createTypeTerm(StringValue.class) + ".readString(source)";
+		addDeserializerNullableCode(sb, fieldIdx, fieldAccess, fieldValueName, isPrimitive, deserializationCode);
+	}
+
+	private void addDeserializerNullableCode(
+			StringBuilder sb,
+			int fieldIdx,
+			Tuple2<String, String> fieldAccess,
+			String fieldValueName,
+			boolean isPrimitive,
+			String readFromSourceCode) {
+		final String isNullCode =
+				"final boolean isNull;\n" +
+				"if ((flags & " + GENERATED + ") != 0 && "  + isPrimitive + ") {\n" +
+				"  isNull = false;\n" +
+				"} else {\n" +
+				"  isNull = source.readBoolean();\n" +
+				"}\n";
+		sb.append(isNullCode);
+		sb.append("\n");
+
+		if (fields[fieldIdx] != null) {
+			final String deserializeCode1 =
+				"final " + fieldAccess.f0 + " " + fieldValueName + ";\n" +
+				"if (isNull) {\n" +
+				"  " + fieldValueName + " = null;\n" +
+				"} else {\n" +
+				"  " + fieldValueName + " = ";
+
+			sb.append(deserializeCode1).append(readFromSourceCode).append(";\n")
+				.append("}\n")
+				.append(fieldAccess.f1).append(";");
+		} else {
+			// read and drop a pre-existing field value
+			sb.append(readFromSourceCode).append(";\n");
+		}
+	}
+
+	/**
+	 * Returns the field's type term and the expression to gain write access to the field.
+	 */
+	private static Tuple2<String, String> createFieldWriteAccess(LinkedHashSet<String> headerMembers, Field field, String valueToSet) {
+		final String fieldTypeTerm = createTypeTerm(field.getType());
+		final String fieldAccessExpr;
+		if (Modifier.isPublic(field.getModifiers())) {
+			fieldAccessExpr = "pojo." + field.getName();
+		} else {
+			final String pojoTypeTerm = createTypeTerm(field.getDeclaringClass());
+			final String methodHandleName = "methodHandle$" + field.getName();
+			final String methodHandleCode =
+				"private static final MethodHandle " + methodHandleName + " = access$" + methodHandleName + "();\n" +
+					"private static MethodHandle access$" + methodHandleName + "() {\n" +
+					"  try {\n" +
+					"    final MethodHandles.Lookup lookup = MethodHandles.lookup();\n" +
+					"    final Field f = " + pojoTypeTerm + ".class" +
+					"      .getDeclaredField(\"" + field.getName() + "\");\n" +
+					"    f.setAccessible(true);\n" +
+					"    return lookup\n" +
+					"      .unreflectSetter(f)\n" +
+					"      .asType(MethodType.methodType(\n" +
+					"        void.class,\n" +
+					"        " + pojoTypeTerm + ".class," +
+					"        " + fieldTypeTerm + "));\n" +
+					"  } catch (Throwable t) {\n" +
+					"    throw new RuntimeException(\"Could not access field '" + field.getName() + "'\" +\n" +
+					"      \"using a method handle.\", t);\n" +
+					"  }\n" +
+					"}";
+			headerMembers.add(methodHandleCode);
+			fieldAccessExpr = "(" + fieldTypeTerm + ") " + methodHandleName + ".invokeExact(pojo, " + valueToSet + ");";
 		}
 		return Tuple2.of(fieldTypeTerm, fieldAccessExpr);
 	}
