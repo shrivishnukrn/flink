@@ -19,10 +19,12 @@
 package org.apache.flink.table.examples.java;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.java.BatchTableEnvironment;
@@ -43,9 +45,15 @@ public class WordCountSQL {
 
 	public static void main(String[] args) throws Exception {
 
-		TypeSerializer<WC> s = Types.POJO(WC.class).createSerializer(new ExecutionConfig());
+		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+		env.fromElements(new WC("hello", 222L)).rebalance().map(new MapFunction<WC, WC>() {
+			@Override
+			public WC map(WC value) {
+				return value;
+			}
+		}).print();
 
-		s.serialize(new WC("hello", 42L), null);
+		env.execute();
 	}
 
 	// *************************************************************************

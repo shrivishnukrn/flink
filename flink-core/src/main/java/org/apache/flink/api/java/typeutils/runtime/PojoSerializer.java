@@ -97,9 +97,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 	 */
 	private transient HashMap<Class<?>, TypeSerializer<?>> subclassSerializerCache;
 
-	private final Class<TypeSerializer<T>> generatedSerializer;
-
-	private final transient TypeSerializer<T> generatedSerializerInstance;
+	private transient TypeSerializer<T> generatedSerializer;
 
 	// --------------------------------------------------------------------------------------------
 
@@ -145,12 +143,8 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.subclassSerializerCache = new HashMap<>();
 
 		// generate serializer
-		final PojoSerializerGenerator<T> generator = new PojoSerializerGenerator<>(clazz, fields, fieldsPrimitive, fieldSerializers);
 		try {
-			generatedSerializer = generator.generate(cl);
-			generatedSerializerInstance = generatedSerializer
-				.getConstructor(Class.class, TypeSerializer[].class, Field[].class, boolean[].class)
-				.newInstance(clazz, fieldSerializers, fields, fieldsPrimitive);
+			generatedSerializer = PojoSerializerGenerator.generate(clazz, fields, fieldsPrimitive, fieldSerializers);
 		} catch (Exception e) {
 			throw new FlinkRuntimeException("Could not generate PojoSerializer. This should not happen.", e);
 		}
@@ -164,7 +158,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 			LinkedHashMap<Class<?>, Integer> registeredClasses,
 			TypeSerializer<?>[] registeredSerializers,
 			HashMap<Class<?>, TypeSerializer<?>> subclassSerializerCache,
-			Class<TypeSerializer<T>> generatedSerializer) {
+			TypeSerializer<T> generatedSerializer) {
 
 		this.clazz = checkNotNull(clazz);
 		this.fields = checkNotNull(fields);
@@ -175,14 +169,6 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		this.registeredSerializers = checkNotNull(registeredSerializers);
 		this.subclassSerializerCache = checkNotNull(subclassSerializerCache);
 		this.generatedSerializer = generatedSerializer;
-
-		try {
-			generatedSerializerInstance = generatedSerializer
-				.getConstructor(Class.class, TypeSerializer[].class, Field[].class, boolean[].class)
-				.newInstance(clazz, fieldSerializers, fields, fieldsPrimitive);
-		} catch (Exception e) {
-			throw new FlinkRuntimeException("Could not instantiate PojoSerializer. This should not happen.");
-		}
 
 		this.executionConfig = null;
 	}
@@ -332,7 +318,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 
 	@Override
 	public void serialize(T value, DataOutputView target) throws IOException {
-		generatedSerializerInstance.serialize(value, target);
+		generatedSerializer.serialize(value, target);
 // TODO
 //		Integer subclassTag = -1;
 //		Class<?> actualClass = value.getClass();
@@ -386,7 +372,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 	@Override
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	public T deserialize(DataInputView source) throws IOException {
-		return generatedSerializerInstance.deserialize(source);
+		return generatedSerializer.deserialize(source);
 
 //		int flags = source.readByte();
 //		if((flags & IS_NULL) != 0) {
@@ -447,7 +433,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 	@Override
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	public T deserialize(T reuse, DataInputView source) throws IOException {
-		return generatedSerializerInstance.deserialize(source);
+		return generatedSerializer.deserialize(source);
 
 //		// handle null values
 //		int flags = source.readByte();
@@ -522,7 +508,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 
 	@Override
 	public void copy(DataInputView source, DataOutputView target) throws IOException {
-		generatedSerializerInstance.copy(source, target);
+		generatedSerializer.copy(source, target);
 //		// copy the flags
 //		int flags = source.readByte();
 //		target.writeByte(flags);
@@ -1057,6 +1043,7 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 		in.defaultReadObject();
 		int numFields = in.readInt();
 		fields = new Field[numFields];
+		fieldsPrimitive = new boolean[numFields];
 		for (int i = 0; i < numFields; i++) {
 			// the deserialized Field may be null if the field no longer exists in the POJO;
 			// in this case, when de-/serializing and copying instances using this serializer
@@ -1068,6 +1055,12 @@ public final class PojoSerializer<T> extends TypeSerializer<T> {
 
 		cl = Thread.currentThread().getContextClassLoader();
 		subclassSerializerCache = new HashMap<Class<?>, TypeSerializer<?>>();
+		// generate serializer
+		try {
+			generatedSerializer = PojoSerializerGenerator.generate(clazz, fields, fieldsPrimitive, fieldSerializers);
+		} catch (Exception e) {
+			throw new FlinkRuntimeException("Could not generate PojoSerializer. This should not happen.", e);
+		}
 	}
 
 	// --------------------------------------------------------------------------------------------
