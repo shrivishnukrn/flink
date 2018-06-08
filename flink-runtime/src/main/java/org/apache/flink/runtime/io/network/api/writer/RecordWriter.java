@@ -200,7 +200,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		for (int i = startIndex; i < endIndex; i++) {
 			serializationDelegate.setInstance(batch.get(indexes[i].batchIndex));
 
-			SerializationResult result = serializer.addRecord((T) serializationDelegate);
+			SerializationResult result = serializer.addRecord((T) serializationDelegate, false);
 
 			while (result.isFullBuffer()) {
 				if (tryFinishCurrentBufferBuilder(targetChannel, serializer)) {

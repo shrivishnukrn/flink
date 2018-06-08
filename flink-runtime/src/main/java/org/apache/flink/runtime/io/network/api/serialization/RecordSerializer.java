@@ -75,7 +75,11 @@ public interface RecordSerializer<T extends IOReadableWritable> {
 	 * @return how much information was written to the target buffer and
 	 *         whether this buffer is full
 	 */
-	SerializationResult addRecord(T record) throws IOException;
+	default SerializationResult addRecord(T record) throws IOException {
+		return addRecord(record, true);
+	}
+
+	SerializationResult addRecord(T record, boolean commit) throws IOException;
 
 	/**
 	 * Sets a (next) target buffer to use and continues writing remaining data

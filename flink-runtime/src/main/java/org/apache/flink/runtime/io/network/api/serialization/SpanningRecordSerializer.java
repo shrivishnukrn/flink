@@ -74,7 +74,7 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 	 *         whether this buffer is full
 	 */
 	@Override
-	public SerializationResult addRecord(T record) throws IOException {
+	public SerializationResult addRecord(T record, boolean commit) throws IOException {
 		if (CHECKED) {
 			if (dataBuffer.hasRemaining()) {
 				throw new IllegalStateException("Pending serialization of previous record.");
@@ -96,7 +96,9 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		if (targetBuffer != null) {
 			targetBuffer.append(lengthBuffer);
 			targetBuffer.append(dataBuffer);
-//			targetBuffer.commit();
+			if (commit) {
+				targetBuffer.commit();
+			}
 		}
 
 		return getSerializationResult();
