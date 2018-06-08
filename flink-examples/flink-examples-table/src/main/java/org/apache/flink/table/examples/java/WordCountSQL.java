@@ -29,6 +29,8 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.java.BatchTableEnvironment;
 
+import java.util.Arrays;
+
 /**
  * Simple example that shows how the Batch SQL API is used in Java.
  *
@@ -43,10 +45,16 @@ public class WordCountSQL {
 	//     PROGRAM
 	// *************************************************************************
 
-	public static void main(String[] args) throws Exception {
+	public static void main(String[] args) throws Throwable {
+
+//		int x = (int) new Object();
+//
+//		int i = (int) getter$methodHandle$test.invokeExact(new WC("hello", 222L, new int[]{12, 23, 444}, null));
+
+//		System.out.println(i);
 
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-		env.fromElements(new WC("hello", 222L)).rebalance().map(new MapFunction<WC, WC>() {
+		env.fromElements(new WC("hello", 222L, new int[]{12, 23, 444}, null)).rebalance().map(new MapFunction<WC, WC>() {
 			@Override
 			public WC map(WC value) {
 				return value;
@@ -66,18 +74,49 @@ public class WordCountSQL {
 	public static class WC {
 		public String word;
 		public long frequency;
+		public int[] ello;
+		public Object nullable;
+		private int test;
 
 		// public constructor to make it a Flink POJO
 		public WC() {}
 
-		public WC(String word, long frequency) {
+		public WC(String word, long frequency, int[] ello, Object nullable) {
 			this.word = word;
 			this.frequency = frequency;
+			this.ello = ello;
+			this.nullable = nullable;
 		}
 
 		@Override
 		public String toString() {
-			return "WC " + word + " " + frequency;
+			return "WC{" + "word='" + word + '\'' + ", frequency=" + frequency + ", ello=" + Arrays.toString(ello) + ", nullable=" + nullable + ", test=" + test + '}';
+		}
+
+		public int getTest() {
+			return test;
+		}
+
+		public void setTest(int test) {
+			this.test = test;
 		}
 	}
+
+//	private static final java.lang.invoke.MethodHandle getter$methodHandle$test = init$getter$methodHandle$test();
+//  private static java.lang.invoke.MethodHandle init$getter$methodHandle$test() {
+//    try {
+//      final java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.lookup();
+//      final java.lang.reflect.Field f = org.apache.flink.table.examples.java.WordCountSQL.WC.class
+//        .getDeclaredField("test");
+//      f.setAccessible(true);
+//      return lookup
+//        .unreflectGetter(f)
+//        .asType(java.lang.invoke.MethodType.methodType(
+//          int.class,
+//          org.apache.flink.table.examples.java.WordCountSQL.WC.class));
+//    } catch (Throwable t) {
+//      throw new RuntimeException("Could not access field 'test'" +
+//        "using a method handle.", t);
+//    }
+//  }
 }

@@ -229,7 +229,11 @@ public class PojoSerializerGenerator<T> {
 			"  if (clazz == actualClass) {\n" +
 			"    final " + classTerm + " pojo = (" + classTerm + ") value;\n" +
 			"    target.writeByte(" + GENERATED + ");\n" +
-			"    " + indent(Collections.singleton(sb.toString()), 4) + "\n" +
+			"    try {\n" +
+			"      " + indent(Collections.singleton(sb.toString()), 6) + "\n" +
+			"    } catch (Throwable t) {\n" +
+			"      throw new RuntimeException(t);\n" +
+			"    }\n" +
 			"  } else {\n" +
 			"    throw new UnsupportedOperationException();\n" +
 			"  }\n" +
@@ -255,8 +259,12 @@ public class PojoSerializerGenerator<T> {
 			"\n" +
 			"  final " + classTerm + " pojo;\n" +
 			"  if ((flags & " + GENERATED + ") == " + GENERATED + ") {\n" +
-			"    pojo = new " + classTerm + "();\n" +
-			"    " + indent(Collections.singleton(sb.toString()), 4) + "\n" +
+			"    try {\n" +
+			"      pojo = new " + classTerm + "();\n" +
+			"      " + indent(Collections.singleton(sb.toString()), 6) + "\n" +
+			"    } catch (Throwable t) {\n" +
+			"      throw new RuntimeException(t);\n" +
+			"    }\n" +
 			"  }\n" +
 			"  else if ((flags & " + IS_SUBCLASS + ") == " + IS_SUBCLASS + ") {\n" +
 			"    throw new UnsupportedOperationException();\n" +
@@ -332,13 +340,13 @@ public class PojoSerializerGenerator<T> {
 	private static void addSerializerCallingCode(StringBuilder sb, Tuple2<String, String> fieldAccess, int fieldIdx) {
 		final String fieldValueName = newName("fieldValue");
 		addSerializerNullableCode(sb, fieldAccess, fieldValueName,
-			"fieldSerializers[" + fieldIdx + "].serialize(" + fieldValueName + ", target)");
+			"fieldSerializers[" + fieldIdx + "].serialize(" + fieldValueName + ", target);");
 	}
 
 	private static void addSerializerBasicCode(StringBuilder sb, Tuple2<String, String> fieldAccess,
 			boolean isPrimitive, String method) {
 		if (isPrimitive) {
-			final String serializationCode = "target." + method + "(" + fieldAccess.f1 + ");";
+			final String serializationCode = "target." + method + "(" + fieldAccess.f1 + ");\n";
 			sb.append(serializationCode);
 		} else {
 			final String fieldValueName = newName("fieldValue");
@@ -351,10 +359,8 @@ public class PojoSerializerGenerator<T> {
 			Class<?> component, String method) {
 		final String componentTerm = createTypeTerm(component);
 		final String fieldValueName = newName("fieldValue");
-		final String lengthName = newName("length");
 		final String serializationCode =
-			"final int " + lengthName + " = " + fieldValueName + ".length;\n" +
-			"target.writeInt(len);\n" +
+			"target.writeInt("+ fieldValueName + ".length);\n" +
 			"for (final " + componentTerm + " c : " + fieldValueName + ") {\n" +
 			"  target." + method + "(c);\n" +
 			"}\n";
@@ -390,28 +396,30 @@ public class PojoSerializerGenerator<T> {
 		if (Modifier.isPublic(field.getModifiers())) {
 			fieldAccessExpr = "pojo." + field.getName();
 		} else {
-			final String pojoTypeTerm = createTypeTerm(field.getDeclaringClass());
-			final String methodHandleName = "methodHandle$" + field.getName();
-			final String methodHandleCode =
-				"private static final MethodHandle " + methodHandleName + " = getter$" + methodHandleName + "();\n" +
-				"private static MethodHandle getter$" + methodHandleName + "() {\n" +
-				"  try {\n" +
-				"    final MethodHandles.Lookup lookup = MethodHandles.lookup();\n" +
-				"    final Field f = " + pojoTypeTerm + ".class\n" +
-				"      .getDeclaredField(\"" + field.getName() + "\");\n" +
-				"    f.setAccessible(true);\n" +
-				"    return lookup\n" +
-				"      .unreflectGetter(f)\n" +
-				"      .asType(MethodType.methodType(\n" +
-				"        " + fieldTypeTerm + ".class,\n" +
-				"        " + pojoTypeTerm + ".class));\n" +
-				"  } catch (Throwable t) {\n" +
-				"    throw new RuntimeException(\"Could not access field '" + field.getName() + "'\" +\n" +
-				"      \"using a method handle.\", t);\n" +
-				"  }\n" +
-				"}";
-			headerMembers.add(methodHandleCode);
-			fieldAccessExpr = "(" + fieldTypeTerm + ") " + methodHandleName + ".invokeExact(pojo)";
+//			final String pojoTypeTerm = createTypeTerm(field.getDeclaringClass());
+//			final String methodHandleName = "getter$methodHandle$" + field.getName();
+//			final String methodHandleCode =
+//				"private static final java.lang.invoke.MethodHandle " + methodHandleName + " = init$" + methodHandleName + "();\n" +
+//				"private static java.lang.invoke.MethodHandle init$" + methodHandleName + "() {\n" +
+//				"  try {\n" +
+//				"    final java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.lookup();\n" +
+//				"    final java.lang.reflect.Field f = " + pojoTypeTerm + ".class\n" +
+//				"      .getDeclaredField(\"" + field.getName() + "\");\n" +
+//				"    f.setAccessible(true);\n" +
+//				"    return lookup\n" +
+//				"      .unreflectGetter(f)\n" +
+//				"      .asType(java.lang.invoke.MethodType.methodType(\n" +
+//				"        " + fieldTypeTerm + ".class,\n" +
+//				"        " + pojoTypeTerm + ".class));\n" +
+//				"  } catch (Throwable t) {\n" +
+//				"    throw new RuntimeException(\"Could not access field '" + field.getName() + "'\" +\n" +
+//				"      \"using a method handle.\", t);\n" +
+//				"  }\n" +
+//				"}";
+//			headerMembers.add(methodHandleCode);
+//			fieldAccessExpr = "(" + fieldTypeTerm + ") " + methodHandleName + ".invokeExact(pojo)";
+			final char first = Character.toUpperCase(field.getName().charAt(0));
+			fieldAccessExpr = "pojo.get" + first + field.getName().substring(1) + "()";
 		}
 		return Tuple2.of(fieldTypeTerm, fieldAccessExpr);
 	}
@@ -436,6 +444,20 @@ public class PojoSerializerGenerator<T> {
 			addDeserializerBasicCode(headerMembers, sb, field, isNullable, "readDouble");
 		} else if (fieldSerializer.getClass() == StringSerializer.class) {
 			addDeserializerStringCode(headerMembers, sb, field);
+		} else if (fieldSerializer.getClass() == BooleanPrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readBoolean");
+		} else if (fieldSerializer.getClass() == BytePrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readByte");
+		} else if (fieldSerializer.getClass() == ShortPrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readShort");
+		} else if (fieldSerializer.getClass() == IntPrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readInt");
+		} else if (fieldSerializer.getClass() == LongPrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readLong");
+		} else if (fieldSerializer.getClass() == FloatPrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readFloat");
+		} else if (fieldSerializer.getClass() == DoublePrimitiveArraySerializer.class) {
+			addDeserializerBasicArrayCode(headerMembers, sb, field, "readDouble");
 		} else {
 			addDeserializerCallingCode(headerMembers, sb, field, fieldIdx);
 		}
@@ -460,10 +482,23 @@ public class PojoSerializerGenerator<T> {
 			"if (source.readBoolean()) {\n" +
 			"  " + fieldValueName + " = null;\n" +
 			"} else {\n" +
-			"  " + fieldValueName + " = " + deserializationCode + ";\n" +
+			"  " + indent(Collections.singleton(deserializationCode), 2) + "\n" +
 			"}\n" +
 			fieldAccess.f1 + "\n";
 		sb.append(code);
+	}
+
+	private void addDeserializerBasicArrayCode(LinkedHashSet<String> headerMembers, StringBuilder sb, Field field, String method) {
+		final String fieldValueName = newName("fieldValue");
+		final String lengthName = newName("length");
+		final Tuple2<String, String> fieldAccess = createFieldWriteAccess(headerMembers, field, fieldValueName);
+		final String deserializationCode =
+			"final int " + lengthName + " = source.readInt();\n" +
+			fieldValueName + " = new " + fieldAccess.f0.replace("[]", "") + "[" + lengthName + "];\n" +
+			"for (int i = 0; i < " + lengthName + "; i++) {\n" +
+			"  " + fieldValueName + "[i] = source." + method + "();\n" +
+			"}\n";
+		addDeserializerNullableCode(sb, fieldAccess, fieldValueName, deserializationCode);
 	}
 
 	private void addDeserializerStringCode(LinkedHashSet<String> headerMembers, StringBuilder sb, Field field) {
@@ -476,7 +511,7 @@ public class PojoSerializerGenerator<T> {
 	private void addDeserializerCallingCode(LinkedHashSet<String> headerMembers, StringBuilder sb, Field field, int fieldIdx) {
 		final String fieldValueName = newName("fieldValue");
 		final Tuple2<String, String> fieldAccess = createFieldWriteAccess(headerMembers, field, fieldValueName);
-		final String deserializationCode = "fieldSerializers[" + fieldIdx + "].deserialize(source)";
+		final String deserializationCode = fieldValueName + " = (" + fieldAccess.f0 + ") fieldSerializers[" + fieldIdx + "].deserialize(source);\n";
 		addDeserializerNullableCode(sb, fieldAccess, fieldValueName, deserializationCode);
 	}
 
@@ -487,31 +522,33 @@ public class PojoSerializerGenerator<T> {
 		final String fieldTypeTerm = createTypeTerm(field.getType());
 		final String fieldAccessExpr;
 		if (Modifier.isPublic(field.getModifiers())) {
-			fieldAccessExpr = "pojo." + field.getName() + "=" + valueToSet + ";";
+			fieldAccessExpr = "pojo." + field.getName() + "=" + valueToSet + ";\n";
 		} else {
-			final String pojoTypeTerm = createTypeTerm(field.getDeclaringClass());
-			final String methodHandleName = "methodHandle$" + field.getName();
-			final String methodHandleCode =
-				"private static final MethodHandle " + methodHandleName + " = setter$" + methodHandleName + "();\n" +
-				"private static MethodHandle setter$" + methodHandleName + "() {\n" +
-				"  try {\n" +
-				"    final MethodHandles.Lookup lookup = MethodHandles.lookup();\n" +
-				"    final Field f = " + pojoTypeTerm + ".class\n" +
-				"      .getDeclaredField(\"" + field.getName() + "\");\n" +
-				"    f.setAccessible(true);\n" +
-				"    return lookup\n" +
-				"      .unreflectSetter(f)\n" +
-				"      .asType(MethodType.methodType(\n" +
-				"        void.class,\n" +
-				"        " + pojoTypeTerm + ".class,\n" +
-				"        " + fieldTypeTerm + ".class));\n" +
-				"  } catch (Throwable t) {\n" +
-				"    throw new RuntimeException(\"Could not access field '" + field.getName() + "'\" +\n" +
-				"      \"using a method handle.\", t);\n" +
-				"  }\n" +
-				"}";
-			headerMembers.add(methodHandleCode);
-			fieldAccessExpr = "(" + fieldTypeTerm + ") " + methodHandleName + ".invokeExact(pojo, " + valueToSet + ");";
+//			final String pojoTypeTerm = createTypeTerm(field.getDeclaringClass());
+//			final String methodHandleName = "setter$methodHandle$" + field.getName();
+//			final String methodHandleCode =
+//				"private static final java.lang.invoke.MethodHandle " + methodHandleName + " = init$" + methodHandleName + "();\n" +
+//				"private static java.lang.invoke.MethodHandle init$" + methodHandleName + "() {\n" +
+//				"  try {\n" +
+//				"    final java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.lookup();\n" +
+//				"    final java.lang.reflect.Field f = " + pojoTypeTerm + ".class\n" +
+//				"      .getDeclaredField(\"" + field.getName() + "\");\n" +
+//				"    f.setAccessible(true);\n" +
+//				"    return lookup\n" +
+//				"      .unreflectSetter(f)\n" +
+//				"      .asType(java.lang.invoke.MethodType.methodType(\n" +
+//				"        void.class,\n" +
+//				"        " + pojoTypeTerm + ".class,\n" +
+//				"        " + fieldTypeTerm + ".class));\n" +
+//				"  } catch (Throwable t) {\n" +
+//				"    throw new RuntimeException(\"Could not access field '" + field.getName() + "'\" +\n" +
+//				"      \"using a method handle.\", t);\n" +
+//				"  }\n" +
+//				"}";
+//			headerMembers.add(methodHandleCode);
+//			fieldAccessExpr = methodHandleName + ".invokeExact(pojo, " + valueToSet + ");\n";
+			final char first = Character.toUpperCase(field.getName().charAt(0));
+			fieldAccessExpr = "pojo.set" + first + field.getName().substring(1) + "(" + valueToSet + ");\n";
 		}
 		return Tuple2.of(fieldTypeTerm, fieldAccessExpr);
 	}
@@ -519,6 +556,26 @@ public class PojoSerializerGenerator<T> {
 	private static String createTypeTerm(Class<?> t) {
 		// TODO this does not work for arrays
 		return t.getCanonicalName();
+	}
+
+	private static Class<?> toBoxed(Class<?> t) {
+		if (t == int.class) {
+			return Integer.class;
+		} else if (t == long.class) {
+			return Long.class;
+		} else if (t == byte.class) {
+			return Byte.class;
+		} else if (t == short.class) {
+			return Short.class;
+		} else if (t == boolean.class) {
+			return Boolean.class;
+		} else if (t == double.class) {
+			return Double.class;
+		} else if (t == float.class) {
+			return Float.class;
+		} else {
+			return t;
+		}
 	}
 
 	private static String newName(String name) {
