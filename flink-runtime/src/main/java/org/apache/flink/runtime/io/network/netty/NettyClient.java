@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.io.network.netty;
 
+import org.apache.flink.runtime.net.SSLUtils;
+
 import org.apache.flink.shaded.netty4.io.netty.bootstrap.Bootstrap;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelException;
 import org.apache.flink.shaded.netty4.io.netty.channel.ChannelFuture;
@@ -35,9 +37,9 @@ import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLParameters;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
@@ -54,6 +56,7 @@ class NettyClient {
 	private Bootstrap bootstrap;
 
 	private SslContext clientSSLContext = null;
+	private SSLUtils.SSLClientTools clientSSLTools;
 
 	NettyClient(NettyConfig config) {
 		this.config = config;
@@ -113,7 +116,8 @@ class NettyClient {
 		}
 
 		try {
-			clientSSLContext = config.createClientSSLContext();
+			clientSSLTools = config.getClientSSLTools();
+			clientSSLContext = config.createClientSSLContext(clientSSLTools);
 		} catch (Exception e) {
 			throw new IOException("Failed to initialize SSL Context for the Netty client", e);
 		}
@@ -184,6 +188,12 @@ class NettyClient {
 						channel.alloc(),
 						serverSocketAddress.getAddress().getCanonicalHostName(),
 						serverSocketAddress.getPort());
+					if (clientSSLTools.handshakeTimeout != 0) {
+						sslHandler.setHandshakeTimeoutMillis(clientSSLTools.handshakeTimeout);
+					}
+					if (clientSSLTools.closeNotifyFlushTimeout != 0) {
+						sslHandler.setCloseNotifyFlushTimeoutMillis(clientSSLTools.closeNotifyFlushTimeout);
+					}
 
 					// Enable hostname verification for remote SSL connections
 					if (!serverSocketAddress.getAddress().isLoopbackAddress()) {

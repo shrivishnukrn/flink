@@ -159,5 +159,39 @@ public class SecurityOptions {
 	public static final ConfigOption<Boolean> SSL_VERIFY_HOSTNAME =
 		key("security.ssl.verify-hostname")
 			.defaultValue(true)
-			.withDescription("Flag to enable peer’s hostname verification during ssl handshake.");
+			.withDescription("Flag to enable peer’s hostname verification during ssl handshake. (<tt>0</tt> = use default)");
+
+	/**
+	 * SSL session cache size.
+	 */
+	public static final ConfigOption<Long> SSL_SESSION_CACHE_SIZE =
+		key("security.ssl.session-cache-size")
+			.defaultValue(0L)
+			.withDescription("The size of the cache used for storing SSL session objects. (<tt>0</tt> = use default)");
+
+	/**
+	 * SSL session cache size.
+	 */
+	public static final ConfigOption<Long> SSL_SESSION_TIMEOUT =
+		key("security.ssl.session-timeout")
+			.defaultValue(0L)
+			.withDescription("The timeout for the cached SSL session objects. (<tt>0</tt> = use default)");
+
+	/**
+	 * SSL session cache size.
+	 */
+	public static final ConfigOption<Long> SSL_HANDSHAKE_TIMEOUT =
+		key("security.ssl.handshake-timeout")
+			.defaultValue(0L)
+			.withDescription("The timeout during SSL handshake. (<tt>0</tt> = use default)");
+
+	/**
+	 * SSL session cache size.
+	 */
+	public static final ConfigOption<Long> SSL_CLOSE_NOTIFY_FLUSH_TIMEOUT =
+		key("security.ssl.close-notify-flush-timeout")
+			.defaultValue(0L)
+			.withDescription("The timeout for flushing the <tt>close_notify</tt> that was triggered by closing a " +
+				"channel. If the <tt>close_notify</tt> was not flushed in the given timeout the channel will be closed " +
+				" forcibly. (<tt>0</tt> = use default)");
 }

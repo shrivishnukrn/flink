@@ -32,6 +32,7 @@ import org.apache.flink.shaded.netty4.io.netty.handler.ssl.SslProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import javax.net.ssl.SSLParameters;
 
 import java.net.InetAddress;
@@ -195,16 +196,23 @@ public class NettyConfig {
 		}
 	}
 
-	public SslContext createClientSSLContext() throws Exception {
+	@Nullable
+	public SSLUtils.SSLClientTools getClientSSLTools() throws Exception {
+		return SSLUtils.createSSLClientTools(config);
+	}
+
+	@Nullable
+	public SslContext createClientSSLContext(SSLUtils.SSLClientTools clientTools) throws Exception {
 		SslContext clientSSLContext = null;
 		if (getSSLEnabled()) {
-			SSLUtils.SSLClientTools clientTools = SSLUtils.createSSLClientTools(config);
 			checkNotNull(clientTools);
 
 			final SslProvider provider = OpenSsl.isAvailable() ? SslProvider.OPENSSL : SslProvider.JDK;
 
 			clientSSLContext = SslContextBuilder.forClient()
 				.sslProvider(provider)
+				.sessionCacheSize(clientTools.sessionCacheSize)
+				.sessionTimeout(clientTools.sessionTimeout)
 				.protocols(clientTools.sslProtocolVersion)
 				.trustManager(clientTools.trustManagerFactory)
 				.build();
@@ -213,16 +221,23 @@ public class NettyConfig {
 		return clientSSLContext;
 	}
 
-	public SslContext createServerSSLContext() throws Exception {
+	@Nullable
+	public SSLUtils.SSLServerTools getServerSSLTools() throws Exception {
+		return SSLUtils.createSSLServerTools(config);
+	}
+
+	@Nullable
+	public SslContext createServerSSLContext(SSLUtils.SSLServerTools serverTools) throws Exception {
 		SslContext serverSSLContext = null;
 		if (getSSLEnabled()) {
-			SSLUtils.SSLServerTools serverTools = SSLUtils.createSSLServerTools(config);
 			checkNotNull(serverTools);
 
 			final SslProvider provider = OpenSsl.isAvailable() ? SslProvider.OPENSSL : SslProvider.JDK;
 
 			serverSSLContext = SslContextBuilder.forServer(serverTools.keyManagerFactory)
 				.sslProvider(provider)
+				.sessionCacheSize(serverTools.sessionCacheSize)
+				.sessionTimeout(serverTools.sessionTimeout)
 				.protocols(serverTools.sslProtocolVersion)
 				.ciphers(Arrays.asList(serverTools.ciphers))
 				.build();

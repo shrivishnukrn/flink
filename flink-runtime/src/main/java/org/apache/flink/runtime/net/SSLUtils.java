@@ -165,10 +165,24 @@ public class SSLUtils {
 	public static class SSLClientTools {
 		public final String sslProtocolVersion;
 		public final TrustManagerFactory trustManagerFactory;
+		public final long sessionCacheSize;
+		public final long sessionTimeout;
+		public final long handshakeTimeout;
+		public final long closeNotifyFlushTimeout;
 
-		public SSLClientTools(String sslProtocolVersion, TrustManagerFactory trustManagerFactory) {
+		public SSLClientTools(
+				String sslProtocolVersion,
+				TrustManagerFactory trustManagerFactory,
+				long sessionCacheSize,
+				long sessionTimeout,
+				long handshakeTimeout,
+				long closeNotifyFlushTimeout) {
 			this.sslProtocolVersion = sslProtocolVersion;
 			this.trustManagerFactory = trustManagerFactory;
+			this.sessionCacheSize = sessionCacheSize;
+			this.sessionTimeout = sessionTimeout;
+			this.handshakeTimeout = handshakeTimeout;
+			this.closeNotifyFlushTimeout = closeNotifyFlushTimeout;
 		}
 	}
 
@@ -193,6 +207,10 @@ public class SSLUtils {
 			String trustStoreFilePath = sslConfig.getString(SecurityOptions.SSL_TRUSTSTORE);
 			String trustStorePassword = sslConfig.getString(SecurityOptions.SSL_TRUSTSTORE_PASSWORD);
 			String sslProtocolVersion = sslConfig.getString(SecurityOptions.SSL_PROTOCOL);
+			long sessionCacheSize = sslConfig.getLong(SecurityOptions.SSL_SESSION_CACHE_SIZE);
+			long sessionTimeout = sslConfig.getLong(SecurityOptions.SSL_SESSION_TIMEOUT);
+			long handshakeTimeout = sslConfig.getLong(SecurityOptions.SSL_HANDSHAKE_TIMEOUT);
+			long closeNotifyFlushTimeout = sslConfig.getLong(SecurityOptions.SSL_CLOSE_NOTIFY_FLUSH_TIMEOUT);
 
 			Preconditions.checkNotNull(trustStoreFilePath, SecurityOptions.SSL_TRUSTSTORE.key() + " was not configured.");
 			Preconditions.checkNotNull(trustStorePassword, SecurityOptions.SSL_TRUSTSTORE_PASSWORD.key() + " was not configured.");
@@ -207,7 +225,16 @@ public class SSLUtils {
 				TrustManagerFactory.getDefaultAlgorithm());
 			trustManagerFactory.init(trustStore);
 
-			return new SSLClientTools(sslProtocolVersion, trustManagerFactory);
+			LOG.info("Using sslSessionCacheSize={}, sslSessionTimeoutMS={}, handshakeTimeoutMS={}, closeNotifyFlushTimeoutMS={}",
+				sessionCacheSize, sessionTimeout, handshakeTimeout, closeNotifyFlushTimeout);
+
+			return new SSLClientTools(
+				sslProtocolVersion,
+				trustManagerFactory,
+				sessionCacheSize,
+				sessionTimeout,
+				handshakeTimeout,
+				closeNotifyFlushTimeout);
 		}
 
 		return null;
@@ -242,11 +269,26 @@ public class SSLUtils {
 		public final String sslProtocolVersion;
 		public final String[] ciphers;
 		public final KeyManagerFactory keyManagerFactory;
+		public final long sessionCacheSize;
+		public final long sessionTimeout;
+		public final long handshakeTimeout;
+		public final long closeNotifyFlushTimeout;
 
-		public SSLServerTools(String sslProtocolVersion, String[] ciphers, KeyManagerFactory keyManagerFactory) {
+		public SSLServerTools(
+				String sslProtocolVersion,
+				String[] ciphers,
+				KeyManagerFactory keyManagerFactory,
+				long sessionCacheSize,
+				long sessionTimeout,
+				long handshakeTimeout,
+				long closeNotifyFlushTimeout) {
 			this.sslProtocolVersion = sslProtocolVersion;
 			this.ciphers = ciphers;
 			this.keyManagerFactory = keyManagerFactory;
+			this.sessionCacheSize = sessionCacheSize;
+			this.sessionTimeout = sessionTimeout;
+			this.handshakeTimeout = handshakeTimeout;
+			this.closeNotifyFlushTimeout = closeNotifyFlushTimeout;
 		}
 	}
 
@@ -273,6 +315,10 @@ public class SSLUtils {
 			String certPassword = sslConfig.getString(SecurityOptions.SSL_KEY_PASSWORD);
 			String sslProtocolVersion = sslConfig.getString(SecurityOptions.SSL_PROTOCOL);
 			String[] sslCipherSuites = sslConfig.getString(SecurityOptions.SSL_ALGORITHMS).split(",");
+			long sessionCacheSize = sslConfig.getLong(SecurityOptions.SSL_SESSION_CACHE_SIZE);
+			long sessionTimeout = sslConfig.getLong(SecurityOptions.SSL_SESSION_TIMEOUT);
+			long handshakeTimeout = sslConfig.getLong(SecurityOptions.SSL_HANDSHAKE_TIMEOUT);
+			long closeNotifyFlushTimeout = sslConfig.getLong(SecurityOptions.SSL_CLOSE_NOTIFY_FLUSH_TIMEOUT);
 
 			Preconditions.checkNotNull(keystoreFilePath, SecurityOptions.SSL_KEYSTORE.key() + " was not configured.");
 			Preconditions.checkNotNull(keystorePassword, SecurityOptions.SSL_KEYSTORE_PASSWORD.key() + " was not configured.");
@@ -288,7 +334,17 @@ public class SSLUtils {
 				KeyManagerFactory.getDefaultAlgorithm());
 			kmf.init(ks, certPassword.toCharArray());
 
-			return new SSLServerTools(sslProtocolVersion, sslCipherSuites, kmf);
+			LOG.info("Using sslSessionCacheSize={}, sslSessionTimeoutMS={}, handshakeTimeoutMS={}, closeNotifyFlushTimeoutMS={}",
+				sessionCacheSize, sessionTimeout, handshakeTimeout, closeNotifyFlushTimeout);
+
+			return new SSLServerTools(
+				sslProtocolVersion,
+				sslCipherSuites,
+				kmf,
+				sessionCacheSize,
+				sessionTimeout,
+				handshakeTimeout,
+				closeNotifyFlushTimeout);
 		}
 
 		return null;
