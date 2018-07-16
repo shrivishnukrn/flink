@@ -24,6 +24,8 @@ TEST_PROGRAM_JAR=$TEST_INFRA_DIR/../../flink-end-to-end-tests/flink-bucketing-si
 # enable DEBUG logging level to retrieve truncate length later
 sed -i -e 's/#log4j.logger.org.apache.flink=INFO/log4j.logger.org.apache.flink=DEBUG/g' $FLINK_DIR/conf/log4j.properties
 
+backup_config
+set_conf_ssl
 start_cluster
 $FLINK_DIR/bin/taskmanager.sh start
 $FLINK_DIR/bin/taskmanager.sh start
