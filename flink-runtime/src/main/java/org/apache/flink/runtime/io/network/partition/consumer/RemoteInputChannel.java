@@ -283,13 +283,24 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	// Credit-based
 	// ------------------------------------------------------------------------
 
+	@Override
+	protected void setBlocked(boolean isBlocked) {
+		super.setBlocked(isBlocked);
+
+		if (!isBlocked) {
+			notifyCreditAvailable();
+		}
+	}
+
 	/**
 	 * Enqueue this input channel in the pipeline for notifying the producer of unannounced credit.
 	 */
 	private void notifyCreditAvailable() {
 		checkState(partitionRequestClient != null, "Tried to send task event to producer before requesting a queue.");
 
-		partitionRequestClient.notifyCreditAvailable(this);
+		if (!isBlocked()) {
+			partitionRequestClient.notifyCreditAvailable(this);
+		}
 	}
 
 	/**
