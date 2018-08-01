@@ -311,7 +311,7 @@ under the License.
 		<dependency>
 			<groupId>com.github.oshi</groupId>
 			<artifactId>oshi-core</artifactId>
-			<optional>true</optional>
+			<!--<optional>true</optional>-->
 		</dependency>
 	</dependencies>
 

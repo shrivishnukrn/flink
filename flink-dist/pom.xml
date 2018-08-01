@@ -518,6 +518,9 @@ under the License.
 								<excludes>
 									<exclude>org.slf4j:slf4j-log4j12</exclude>
 									<exclude>log4j:log4j</exclude>
+									<exclude>com.github.oshi:oshi-core</exclude>
+									<exclude>net.java.dev.jna:jna-platform</exclude>
+									<exclude>net.java.dev.jna:jna</exclude>
 								</excludes>
 							</artifactSet>
 							<transformers>
