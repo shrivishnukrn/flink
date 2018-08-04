@@ -298,8 +298,7 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	private void notifyCreditAvailable() {
 		checkState(partitionRequestClient != null, "Tried to send task event to producer before requesting a queue.");
 
-		// We should skip the notification if this channel is already released.
-		if (!isReleased.get() && !isBlocked()) {
+		if (!isBlocked()) {
 			partitionRequestClient.notifyCreditAvailable(this);
 		}
 	}
@@ -363,13 +362,6 @@ public class RemoteInputChannel extends InputChannel implements BufferRecycler, 
 	 */
 	@Override
 	public boolean notifyBufferAvailable(Buffer buffer) {
-		// Check the isReleased state outside synchronized block first to avoid
-		// deadlock with releaseAllResources running in parallel.
-		if (isReleased.get()) {
-			buffer.recycleBuffer();
-			return false;
-		}
-
 		boolean recycleBuffer = true;
 		try {
 			boolean needMoreBuffers = false;
