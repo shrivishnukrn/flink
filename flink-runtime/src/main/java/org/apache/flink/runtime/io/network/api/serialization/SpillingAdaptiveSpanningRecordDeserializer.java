@@ -40,20 +40,17 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Random;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * @param <T> The type of the record to be deserialized.
  */
 public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWritable> implements RecordDeserializer<T> {
-
-	private static final String BROKEN_SERIALIZATION_ERROR_MESSAGE =
-					"Serializer consumed more bytes than the record had. " +
-					"This indicates broken serialization. If you are using custom serialization types " +
-					"(Value or Writable), check their serialization methods. If you are using a " +
-					"Kryo-serialized type, check the corresponding Kryo serializer.";
 
 	private static final int THRESHOLD_FOR_SPILLING = 5 * 1024 * 1024; // 5 MiBytes
 
@@ -74,14 +71,19 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 		int offset = buffer.getMemorySegmentOffset();
 		MemorySegment segment = buffer.getMemorySegment();
+		// note: below, we always start to read from the buffer's memory segment offset and
+		//       therefore the reader index must be 0 as well
+		checkArgument(buffer.getReaderIndex() == 0, "Buffer to deserialize from must not have been read from.");
 		int numBytes = buffer.getSize();
 
 		// check if some spanning record deserialization is pending
 		if (this.spanningWrapper.getNumGatheredBytes() > 0) {
+			checkState(!this.spanningWrapper.hasFullRecord(), "Need to extract existing record(s) first before adding new buffers.");
 			this.spanningWrapper.addNextChunkFromMemorySegment(segment, offset, numBytes);
 		}
 		else {
-			this.nonSpanningWrapper.initializeFromMemorySegment(segment, offset, numBytes + offset);
+			checkState(this.nonSpanningWrapper.remaining() == 0, "Need to consume all previously received bytes first before adding new buffers.");
+			this.nonSpanningWrapper.initializeFromMemorySegment(segment, offset, offset + numBytes);
 		}
 	}
 
@@ -106,8 +108,19 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 			if (len <= nonSpanningRemaining - 4) {
 				// we can get a full record from here
+				int oldPosition = this.nonSpanningWrapper.position;
 				try {
 					target.read(this.nonSpanningWrapper);
+					int bytesRead = this.nonSpanningWrapper.position - oldPosition;
+
+					if (bytesRead != len) {
+						throw new IOException(
+							formatDeserializationError(
+								len,
+								len - bytesRead,
+								this.nonSpanningWrapper.position,
+								this.nonSpanningWrapper.limit));
+					}
 
 					int remaining = this.nonSpanningWrapper.remaining();
 					if (remaining > 0) {
@@ -121,7 +134,14 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 					}
 				}
 				catch (IndexOutOfBoundsException e) {
-					throw new IOException(BROKEN_SERIALIZATION_ERROR_MESSAGE, e);
+					int bytesRead = this.nonSpanningWrapper.position - oldPosition;
+					throw new IOException(
+						formatDeserializationError(
+							len,
+							len - bytesRead,
+							this.nonSpanningWrapper.position,
+							this.nonSpanningWrapper.limit),
+						e);
 				}
 			}
 			else {
@@ -142,7 +162,16 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		// spanning record case
 		if (this.spanningWrapper.hasFullRecord()) {
 			// get the full record
-			target.read(this.spanningWrapper.getInputView());
+			try {
+				target.read(this.spanningWrapper.getInputView());
+			} catch (EOFException e) {
+				Optional<String> deserializationError = this.spanningWrapper.getDeserializationError(1);
+				if (deserializationError.isPresent()) {
+					throw new IOException(deserializationError.get(), e);
+				} else {
+					throw e;
+				}
+			}
 
 			// move the remainder to the non-spanning wrapper
 			// this does not copy it, only sets the memory segment
@@ -545,7 +574,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 				// there is more data in the segment
 				this.leftOverData = segment;
 				this.leftOverStart = segmentPosition + toCopy;
-				this.leftOverLimit = numBytes + offset;
+				this.leftOverLimit = offset + numBytes;
 			}
 
 			if (accumulatedRecordBytes == recordLength) {
@@ -566,12 +595,40 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			}
 		}
 
-		private void moveRemainderToNonSpanningDeserializer(NonSpanningWrapper deserializer) {
+		private void moveRemainderToNonSpanningDeserializer(NonSpanningWrapper deserializer) throws IOException {
+			Optional<String> deserializationError = getDeserializationError(0);
+			if (deserializationError.isPresent()) {
+				throw new IOException(deserializationError.get());
+			}
+
 			deserializer.clear();
 
 			if (leftOverData != null) {
 				deserializer.initializeFromMemorySegment(leftOverData, leftOverStart, leftOverLimit);
 			}
+		}
+
+		private Optional<String> getDeserializationError(int addToReadBytes) {
+			Optional<String> deserializationError = Optional.empty();
+			int remainingSpanningBytes = 0, leftOverDataStart = 0, leftOverDataLimit = 0;
+			if (this.spillFileReader == null) {
+				remainingSpanningBytes = this.serializationReadBuffer.available() - addToReadBytes;
+			} else {
+				try {
+					remainingSpanningBytes = this.spillFileReader.available() - addToReadBytes;
+				} catch (IOException ignored) {
+				}
+			}
+			if (this.leftOverData != null) {
+				leftOverDataStart = this.leftOverStart;
+				leftOverDataLimit = this.leftOverLimit;
+			}
+			if (remainingSpanningBytes != 0) {
+				deserializationError = Optional.of(
+					formatDeserializationError(
+						this.recordLength, remainingSpanningBytes, leftOverDataStart, leftOverDataLimit));
+			}
+			return deserializationError;
 		}
 
 		private boolean hasFullRecord() {
@@ -661,5 +718,20 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			random.nextBytes(bytes);
 			return StringUtils.byteToHexString(bytes);
 		}
+	}
+
+	private static String formatDeserializationError(
+			int recordLength,
+			int remainingBytes,
+			int leftOverDataStart,
+			int leftOverDataLimit) {
+		return String.format(
+			"Serializer consumed more/less bytes than the record had. " +
+				"This indicates broken serialization. If you are using custom serialization types " +
+				"(Value or Writable), check their serialization methods. If you are using a " +
+				"Kryo-serialized type, check the corresponding Kryo serializer. " +
+				"%d remaining unread byte(s) in buffer for record (expected length=%d); " +
+				"remaining buffer bytes: start=%d, end=%d",
+			remainingBytes, recordLength, leftOverDataStart, leftOverDataLimit);
 	}
 }

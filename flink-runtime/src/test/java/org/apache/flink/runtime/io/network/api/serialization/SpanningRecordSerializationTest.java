@@ -18,22 +18,27 @@
 
 package org.apache.flink.runtime.io.network.api.serialization;
 
+import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.core.memory.DataInputView;
+import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.serialization.types.LargeObjectType;
 import org.apache.flink.testutils.serialization.types.IntType;
-import org.apache.flink.testutils.serialization.types.SerializationTestType;
 import org.apache.flink.testutils.serialization.types.SerializationTestTypeFactory;
 import org.apache.flink.testutils.serialization.types.Util;
+import org.apache.flink.types.StringValue;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -42,6 +47,7 @@ import java.util.Random;
 
 import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.buildSingleBuffer;
 import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.createFilledBufferBuilder;
+import static org.hamcrest.CoreMatchers.isA;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasProperty;
@@ -51,6 +57,9 @@ import static org.hamcrest.Matchers.hasProperty;
  */
 public class SpanningRecordSerializationTest extends TestLogger {
 	private static final Random RANDOM = new Random(42);
+
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
 
 	@Rule
 	public TemporaryFolder tempFolder = new TemporaryFolder();
@@ -92,7 +101,7 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		final int numValues = 99;
 		final int segmentSize = 32 * 1024;
 
-		List<SerializationTestType> originalRecords = new ArrayList<>((numValues + 1) / 2);
+		List<IOReadableWritable> originalRecords = new ArrayList<>((numValues + 1) / 2);
 		LargeObjectType genLarge = new LargeObjectType();
 		Random rnd = new Random();
 
@@ -107,11 +116,216 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		testSerializationRoundTrip(originalRecords, segmentSize);
 	}
 
+	/**
+	 * Non-spanning, deserialization reads one byte too many and succeeds.
+	 */
+	@Test
+	public void testHandleDeserializingTooMuchNonSpanning1() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" -1 remaining unread byte");
+		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 32 * 1024);
+	}
+
+	/**
+	 * Non-spanning, serialization length is 16 (including headers), deserialization reads one byte
+	 * too many and succeeds.
+	 */
+	@Test
+	public void testHandleDeserializingTooMuchNonSpanning2() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" -1 remaining unread byte");
+		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 17);
+	}
+
+	/**
+	 * Non-spanning, serialization length is 16 (including headers), deserialization reads one byte
+	 * too many and fails.
+	 */
+	@Test
+	public void testHandleDeserializingTooMuchNonSpanning3() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" -1 remaining unread byte");
+		expectedException.expectCause(isA(IndexOutOfBoundsException.class));
+		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 16);
+	}
+
+	/**
+	 * Spanning, serialization length is 16 (including headers), deserialization reads one byte
+	 * too many and fails.
+	 */
+	@Test
+	public void testHandleDeserializingTooMuchSpanning1() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" -1 remaining unread byte");
+		expectedException.expectCause(isA(EOFException.class));
+		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 15);
+	}
+
+	/**
+	 * Spanning, serialization length is 16 (including headers), deserialization reads one byte
+	 * too many and fails.
+	 */
+	@Test
+	public void testHandleDeserializingTooMuchSpanning2() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" -1 remaining unread byte");
+		expectedException.expectCause(isA(EOFException.class));
+		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 1);
+	}
+
+	/**
+	 * Spanning, spilling, deserialization reads one byte too many.
+	 */
+	@Test
+	public void testHandleDeserializingTooMuchSpanningLargeRecord() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" -1 remaining unread byte");
+		expectedException.expectCause(isA(EOFException.class));
+		LargeObjectType genLarge = new LargeObjectTypeDeserializingTooMuch();
+		Random rnd = new Random();
+		testHandleWrongDeserialization(genLarge.getRandom(rnd), 32 * 1024);
+	}
+
+	/**
+	 * Non-spanning, deserialization forgets to read one byte.
+	 */
+	@Test
+	public void testHandleDeserializingNotEnoughNonSpanning() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" 1 remaining unread byte");
+		testHandleWrongDeserialization(new StringValueDeserializingNotEnough("Test string"), 32 * 1024);
+	}
+
+	/**
+	 * Spanning, serialization length is 17 (including headers), deserialization forgets to read one
+	 * byte.
+	 */
+	@Test
+	public void testHandleDeserializingNotEnoughSpanning1() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" 1 remaining unread byte");
+		testHandleWrongDeserialization(new StringValueDeserializingNotEnough("Test string"), 16);
+	}
+
+	/**
+	 * Spanning, serialization length is 17 (including headers), deserialization forgets to read one
+	 * byte.
+	 */
+	@Test
+	public void testHandleDeserializingNotEnoughSpanning2() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" 1 remaining unread byte");
+		testHandleWrongDeserialization(new StringValueDeserializingNotEnough("Test string"), 1);
+	}
+
+	/**
+	 * Spanning, spilling, deserialization forgets to read one byte.
+	 */
+	@Test
+	public void testHandleDeserializingNotEnoughSpanningLargeRecord() throws Exception {
+		expectedException.expect(IOException.class);
+		expectedException.expectMessage(" 1 remaining unread byte");
+		LargeObjectType genLarge = new LargeObjectTypeDeserializingNotEnough();
+		Random rnd = new Random();
+		testHandleWrongDeserialization(genLarge.getRandom(rnd), 32 * 1024);
+	}
+
+	private void testHandleWrongDeserialization(IOReadableWritable testValue, int segmentSize) throws Exception {
+		List<IOReadableWritable> originalRecords = new ArrayList<>(1);
+		originalRecords.add(testValue);
+
+		testSerializationRoundTrip(originalRecords, segmentSize);
+	}
+
+	private static class StringValueDeserializingTooMuch extends StringValue {
+
+		private static final long serialVersionUID = 2023100853652504319L;
+
+		@SuppressWarnings("unused")
+		public StringValueDeserializingTooMuch() {
+		}
+
+		StringValueDeserializingTooMuch(CharSequence value) {
+			super(value);
+		}
+
+		@Override
+		public void read(DataInputView in) throws IOException {
+			super.read(in);
+			in.readUnsignedByte(); // not written by write()
+		}
+	}
+
+	private static class StringValueDeserializingNotEnough extends StringValue {
+
+		private static final long serialVersionUID = -1863360158914174625L;
+
+		@SuppressWarnings("unused")
+		public StringValueDeserializingNotEnough() {
+		}
+
+		StringValueDeserializingNotEnough(CharSequence value) {
+			super(value);
+		}
+
+		@Override
+		public void write(DataOutputView out) throws IOException {
+			super.write(out);
+			out.write(42); // not used in read()
+		}
+	}
+
+	private static class LargeObjectTypeDeserializingTooMuch extends LargeObjectType {
+
+		@SuppressWarnings("WeakerAccess")
+		public LargeObjectTypeDeserializingTooMuch() {
+		}
+
+		public LargeObjectTypeDeserializingTooMuch(int len) {
+			super(len);
+		}
+
+		@Override
+		public void read(DataInputView in) throws IOException {
+			super.read(in);
+			in.readUnsignedByte(); // not written by write()
+		}
+
+		@Override
+		public LargeObjectTypeDeserializingTooMuch getRandom(Random rnd) {
+			int length = super.getRandom(rnd).length();
+			return new LargeObjectTypeDeserializingTooMuch(length);
+		}
+	}
+
+	private static class LargeObjectTypeDeserializingNotEnough extends LargeObjectType {
+
+		@SuppressWarnings("unused")
+		public LargeObjectTypeDeserializingNotEnough() {
+		}
+
+		public LargeObjectTypeDeserializingNotEnough(int len) {
+			super(len);
+		}
+
+		@Override
+		public void write(DataOutputView out) throws IOException {
+			super.write(out);
+			out.write(42); // not used in read()
+		}
+
+		@Override
+		public LargeObjectTypeDeserializingNotEnough getRandom(Random rnd) {
+			int length = super.getRandom(rnd).length();
+			return new LargeObjectTypeDeserializingNotEnough(length);
+		}
+	}
+
 	// -----------------------------------------------------------------------------------------------------------------
 
-	private void testSerializationRoundTrip(Iterable<SerializationTestType> records, int segmentSize) throws Exception {
-		RecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<>();
-		RecordDeserializer<SerializationTestType> deserializer =
+	private void testSerializationRoundTrip(Iterable<? extends IOReadableWritable> records, int segmentSize) throws Exception {
+		RecordSerializer<IOReadableWritable> serializer = new SpanningRecordSerializer<>();
+		RecordDeserializer<IOReadableWritable> deserializer =
 			new SpillingAdaptiveSpanningRecordDeserializer<>(
 				new String[]{ tempFolder.getRoot().getAbsolutePath() });
 
@@ -128,19 +342,19 @@ public class SpanningRecordSerializationTest extends TestLogger {
 	 * @param segmentSize size for the {@link MemorySegment}
 	 */
 	private static void testSerializationRoundTrip(
-			Iterable<SerializationTestType> records,
+			Iterable<? extends IOReadableWritable> records,
 			int segmentSize,
-			RecordSerializer<SerializationTestType> serializer,
-			RecordDeserializer<SerializationTestType> deserializer)
+			RecordSerializer<IOReadableWritable> serializer,
+			RecordDeserializer<IOReadableWritable> deserializer)
 		throws Exception {
-		final ArrayDeque<SerializationTestType> serializedRecords = new ArrayDeque<>();
+		final ArrayDeque<IOReadableWritable> serializedRecords = new ArrayDeque<>();
 
 		// -------------------------------------------------------------------------------------------------------------
 
 		BufferConsumerAndSerializerResult serializationResult = setNextBufferForSerializer(serializer, segmentSize);
 
 		int numRecords = 0;
-		for (SerializationTestType record : records) {
+		for (IOReadableWritable record : records) {
 
 			serializedRecords.add(record);
 
@@ -179,13 +393,13 @@ public class SpanningRecordSerializationTest extends TestLogger {
 	}
 
 	private static int deserializeAllAvailableRecords(
-			RecordDeserializer<SerializationTestType> deserializer,
-			ArrayDeque<SerializationTestType> serializedRecords,
+			RecordDeserializer<IOReadableWritable> deserializer,
+			ArrayDeque<IOReadableWritable> serializedRecords,
 			boolean mustBeFullRecords,
 			int numRecords) throws InstantiationException, IllegalAccessException, IOException {
 		while (!serializedRecords.isEmpty()) {
-			SerializationTestType expected = serializedRecords.poll();
-			SerializationTestType actual = expected.getClass().newInstance();
+			IOReadableWritable expected = serializedRecords.poll();
+			IOReadableWritable actual = expected.getClass().newInstance();
 
 			RecordDeserializer.DeserializationResult deserializationResult =
 				deserializer.getNextRecord(actual);
@@ -204,7 +418,7 @@ public class SpanningRecordSerializationTest extends TestLogger {
 	}
 
 	private static BufferConsumerAndSerializerResult setNextBufferForSerializer(
-			RecordSerializer<SerializationTestType> serializer,
+			RecordSerializer<IOReadableWritable> serializer,
 			int segmentSize) throws IOException {
 		// create a bufferBuilder with some random starting offset to properly test handling buffer slices in the
 		// deserialization code.
