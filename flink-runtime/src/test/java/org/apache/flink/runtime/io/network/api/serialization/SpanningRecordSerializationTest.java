@@ -42,6 +42,9 @@ import java.util.Random;
 
 import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.buildSingleBuffer;
 import static org.apache.flink.runtime.io.network.buffer.BufferBuilderTestUtils.createFilledBufferBuilder;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasProperty;
 
 /**
  * Tests for the {@link SpillingAdaptiveSpanningRecordDeserializer}.
@@ -148,22 +151,16 @@ public class SpanningRecordSerializationTest extends TestLogger {
 				// buffer is full => start deserializing
 				deserializer.setNextBuffer(serializationResult.buildBuffer());
 
-				while (!serializedRecords.isEmpty()) {
-					SerializationTestType expected = serializedRecords.poll();
-					SerializationTestType actual = expected.getClass().newInstance();
+				numRecords =
+					deserializeAllAvailableRecords(deserializer, serializedRecords, false, numRecords);
 
-					if (deserializer.getNextRecord(actual).isFullRecord()) {
-						Assert.assertEquals(expected, actual);
-						numRecords--;
-					} else {
-						serializedRecords.addFirst(expected);
-						break;
-					}
-				}
-
-				// move buffers as long as necessary (for long records)
+				// move buffers as long as necessary (for spanning records)
 				while ((serializationResult = setNextBufferForSerializer(serializer, segmentSize)).isFullBuffer()) {
 					deserializer.setNextBuffer(serializationResult.buildBuffer());
+
+					numRecords =
+						deserializeAllAvailableRecords(deserializer, serializedRecords, false, numRecords);
+
 					serializer.clear();
 				}
 			}
@@ -172,21 +169,38 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		// deserialize left over records
 		deserializer.setNextBuffer(serializationResult.buildBuffer());
 
-		while (!serializedRecords.isEmpty()) {
-			SerializationTestType expected = serializedRecords.poll();
-
-			SerializationTestType actual = expected.getClass().newInstance();
-			RecordDeserializer.DeserializationResult result = deserializer.getNextRecord(actual);
-
-			Assert.assertTrue(result.isFullRecord());
-			Assert.assertEquals(expected, actual);
-			numRecords--;
-		}
+		numRecords =
+			deserializeAllAvailableRecords(deserializer, serializedRecords, true, numRecords);
 
 		// assert that all records have been serialized and deserialized
 		Assert.assertEquals(0, numRecords);
 		Assert.assertFalse(serializer.hasSerializedData());
 		Assert.assertFalse(deserializer.hasUnfinishedData());
+	}
+
+	private static int deserializeAllAvailableRecords(
+			RecordDeserializer<SerializationTestType> deserializer,
+			ArrayDeque<SerializationTestType> serializedRecords,
+			boolean mustBeFullRecords,
+			int numRecords) throws InstantiationException, IllegalAccessException, IOException {
+		while (!serializedRecords.isEmpty()) {
+			SerializationTestType expected = serializedRecords.poll();
+			SerializationTestType actual = expected.getClass().newInstance();
+
+			RecordDeserializer.DeserializationResult deserializationResult =
+				deserializer.getNextRecord(actual);
+			if (mustBeFullRecords) {
+				assertThat(deserializationResult, hasProperty("fullRecord", equalTo(true)));
+			}
+			if (deserializationResult.isFullRecord()) {
+				Assert.assertEquals(expected, actual);
+				numRecords--;
+			} else {
+				serializedRecords.addFirst(expected);
+				break;
+			}
+		}
+		return numRecords;
 	}
 
 	private static BufferConsumerAndSerializerResult setNextBufferForSerializer(
