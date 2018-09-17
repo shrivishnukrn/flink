@@ -549,6 +549,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 				}
 				else {
 					spillingChannel.close();
+					spillingChannel = null;
 
 					BufferedInputStream inStream = new BufferedInputStream(new FileInputStream(spillFile), 2 * 1024 * 1024);
 					this.spillFileReader = new DataInputViewStreamWrapper(inStream);
@@ -579,6 +580,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			this.recordLength = -1;
 			this.lengthBuffer.clear();
 			this.leftOverData = null;
+			this.leftOverStart = 0;
+			this.leftOverLimit = 0;
 			this.accumulatedRecordBytes = 0;
 
 			if (spillingChannel != null) {
