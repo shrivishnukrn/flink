@@ -26,6 +26,9 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.util.StringUtils;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
 import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.File;
@@ -38,6 +41,8 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Random;
+
+import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * @param <T> The type of the record to be deserialized.
@@ -440,6 +445,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 		private final ByteBuffer lengthBuffer;
 
+		@Nullable
 		private FileChannel spillingChannel;
 
 		private byte[] buffer;
@@ -448,14 +454,17 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 		private int accumulatedRecordBytes;
 
+		@Nullable
 		private MemorySegment leftOverData;
 
 		private int leftOverStart;
 
 		private int leftOverLimit;
 
+		@Nullable
 		private File spillFile;
 
+		@Nullable
 		private DataInputViewStreamWrapper spillFileReader;
 
 		public SpanningWrapper(String[] tempDirs) {
@@ -551,7 +560,10 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 					spillingChannel.close();
 					spillingChannel = null;
 
-					BufferedInputStream inStream = new BufferedInputStream(new FileInputStream(spillFile), 2 * 1024 * 1024);
+					BufferedInputStream inStream =
+						new BufferedInputStream(
+							new FileInputStream(checkNotNull(spillFile)),
+							2 * 1024 * 1024);
 					this.spillFileReader = new DataInputViewStreamWrapper(inStream);
 				}
 			}
@@ -626,6 +638,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		}
 
 		@SuppressWarnings("resource")
+		@Nonnull
 		private FileChannel createSpillingChannel() throws IOException {
 			if (spillFile != null) {
 				throw new IllegalStateException("Spilling file already exists.");
