@@ -20,6 +20,7 @@ package org.apache.flink.streaming.runtime.io;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.SimpleCounter;
@@ -158,9 +159,10 @@ public class StreamTwoInputProcessor<IN1, IN2> {
 		// Initialize one deserializer per input channel
 		this.recordDeserializers = new SpillingAdaptiveSpanningRecordDeserializer[inputGate.getNumberOfInputChannels()];
 
+		boolean activateActionLog = inputSerializer1 instanceof StringSerializer || inputSerializer2 instanceof StringSerializer;
 		for (int i = 0; i < recordDeserializers.length; i++) {
 			recordDeserializers[i] = new SpillingAdaptiveSpanningRecordDeserializer<>(
-				ioManager.getSpillingDirectoriesPaths());
+				ioManager.getSpillingDirectoriesPaths(), activateActionLog);
 		}
 
 		// determine which unioned channels belong to input 1 and which belong to input 2

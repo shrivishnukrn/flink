@@ -26,6 +26,8 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.util.StringUtils;
 
+import org.apache.commons.collections.buffer.CircularFifoBuffer;
+
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
@@ -39,7 +41,9 @@ import java.io.UTFDataFormatException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
+import java.util.AbstractCollection;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Optional;
 import java.util.Random;
 
@@ -61,9 +65,21 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 	private Buffer currentBuffer;
 
+	private final AbstractCollection<Action> actionLog;
+
 	public SpillingAdaptiveSpanningRecordDeserializer(String[] tmpDirectories) {
+		this(tmpDirectories, false);
+	}
+
+	public SpillingAdaptiveSpanningRecordDeserializer(String[] tmpDirectories, boolean activateActionLog) {
+		if (activateActionLog) {
+			//noinspection unchecked
+			actionLog = new CircularFifoBuffer(100);
+		} else {
+			actionLog = new EmptyCollection<>();
+		}
 		this.nonSpanningWrapper = new NonSpanningWrapper();
-		this.spanningWrapper = new SpanningWrapper(tmpDirectories);
+		this.spanningWrapper = new SpanningWrapper(tmpDirectories, actionLog);
 	}
 
 	@Override
@@ -80,10 +96,12 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		// check if some spanning record deserialization is pending
 		if (this.spanningWrapper.getNumGatheredBytes() > 0) {
 			checkState(!this.spanningWrapper.hasFullRecord(), "Need to extract existing record(s) first before adding new buffers.");
+			this.actionLog.add(new AddBuffer(segment, offset, numBytes, this.spanningWrapper));
 			this.spanningWrapper.addNextChunkFromMemorySegment(segment, offset, numBytes);
 		}
 		else {
 			checkState(this.nonSpanningWrapper.remaining() == 0, "Need to consume all previously received bytes first before adding new buffers.");
+			this.actionLog.add(new AddBuffer(segment, offset, numBytes, this.nonSpanningWrapper));
 			this.nonSpanningWrapper.initializeFromMemorySegment(segment, offset, offset + numBytes);
 		}
 	}
@@ -111,6 +129,9 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 				// we can get a full record from here
 				int oldPosition = this.nonSpanningWrapper.position;
 				try {
+					actionLog.add(
+						new GetRecord(this.nonSpanningWrapper, oldPosition, len,
+							this.nonSpanningWrapper.remaining() - len));
 					target.read(this.nonSpanningWrapper);
 					int bytesRead = this.nonSpanningWrapper.position - oldPosition;
 
@@ -120,7 +141,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 								len,
 								len - bytesRead,
 								this.nonSpanningWrapper.position,
-								this.nonSpanningWrapper.limit));
+								this.nonSpanningWrapper.limit,
+								actionLog));
 					}
 
 					int remaining = this.nonSpanningWrapper.remaining();
@@ -141,7 +163,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 							len,
 							len - bytesRead,
 							this.nonSpanningWrapper.position,
-							this.nonSpanningWrapper.limit),
+							this.nonSpanningWrapper.limit,
+							actionLog),
 						e);
 				}
 			}
@@ -164,6 +187,11 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		if (this.spanningWrapper.hasFullRecord()) {
 			// get the full record
 			try {
+				actionLog.add(
+					new GetRecord(this.spanningWrapper, 0,
+						this.spanningWrapper.recordLength,
+						this.spanningWrapper.remaining() -
+							this.spanningWrapper.recordLength));
 				target.read(this.spanningWrapper.getInputView());
 			} catch (EOFException e) {
 				Optional<String> deserializationError = this.spanningWrapper.getDeserializationError(1);
@@ -494,8 +522,12 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		@Nullable
 		private DataInputViewStreamWrapper spillFileReader;
 
-		SpanningWrapper(String[] tempDirs) {
+		private final AbstractCollection<Action> actionLog;
+
+		SpanningWrapper(
+			String[] tempDirs, AbstractCollection<Action> actionLog) {
 			this.tempDirs = tempDirs;
+			this.actionLog = actionLog;
 
 			this.lengthBuffer = ByteBuffer.allocate(4);
 			this.lengthBuffer.order(ByteOrder.BIG_ENDIAN);
@@ -514,6 +546,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 			if (nextRecordLength > THRESHOLD_FOR_SPILLING) {
 				// create a spilling channel and put the data there
+				actionLog.add(
+					new MoveToSpilling(partial, this, partial.position, numBytesChunk));
 				this.spillingChannel = createSpillingChannel();
 
 				ByteBuffer toWrite = partial.segment.wrap(partial.position, numBytesChunk);
@@ -521,6 +555,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			}
 			else {
 				// collect in memory
+				actionLog.add(
+					new MoveToSpanning(partial, this, partial.position, numBytesChunk));
 				ensureBufferCapacity(nextRecordLength);
 				partial.segment.get(partial.position, buffer, 0, numBytesChunk);
 			}
@@ -530,6 +566,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 		private void initializeWithPartialLength(NonSpanningWrapper partial) {
 			// copy what we have to the length buffer
+			actionLog.add(
+				new MoveToSpanning(partial, this, partial.position, partial.remaining()));
 			partial.segment.get(partial.position, this.lengthBuffer, partial.remaining());
 		}
 
@@ -605,6 +643,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			deserializer.clear();
 
 			if (leftOverData != null) {
+				actionLog.add(
+					new MoveToNonSpanning(this, deserializer, leftOverData, leftOverStart, leftOverLimit));
 				deserializer.initializeFromMemorySegment(leftOverData, leftOverStart, leftOverLimit);
 			}
 		}
@@ -627,7 +667,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			if (remainingSpanningBytes != 0) {
 				deserializationError = Optional.of(
 					formatDeserializationError(
-						this.recordLength, remainingSpanningBytes, leftOverDataStart, leftOverDataLimit));
+						this.recordLength, remainingSpanningBytes, leftOverDataStart, leftOverDataLimit,
+						actionLog));
 			}
 			return deserializationError;
 		}
@@ -719,20 +760,214 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			random.nextBytes(bytes);
 			return StringUtils.byteToHexString(bytes);
 		}
+
+		public int remaining() {
+			if (this.spillFileReader == null) {
+				return this.serializationReadBuffer.available();
+			} else {
+				try {
+					return this.spillFileReader.available();
+				} catch (IOException ignored) {
+					return 0;
+				}
+			}
+		}
 	}
 
 	private static String formatDeserializationError(
 			int recordLength,
 			int remainingBytes,
 			int leftOverDataStart,
-			int leftOverDataLimit) {
+			int leftOverDataLimit,
+			AbstractCollection<Action> actionLog) {
 		return String.format(
 			"Serializer consumed more/less bytes than the record had. " +
 				"This indicates broken serialization. If you are using custom serialization types " +
 				"(Value or Writable), check their serialization methods. If you are using a " +
 				"Kryo-serialized type, check the corresponding Kryo serializer. " +
 				"%d remaining unread byte(s) in buffer for record (expected length=%d); " +
-				"remaining buffer bytes: start=%d, end=%d",
-			remainingBytes, recordLength, leftOverDataStart, leftOverDataLimit);
+				"remaining buffer bytes: start=%d, end=%d\nlast 100 actions: %s",
+			remainingBytes, recordLength, leftOverDataStart, leftOverDataLimit, actionLog);
+	}
+
+	private static class Action {
+		static String objectToString(Object o) {
+			return o.getClass().getSimpleName() + "@" + Integer.toHexString(o.hashCode());
+		}
+
+	}
+
+	private static class AddBuffer extends Action {
+		private final String segment;
+		private final int offset;
+		private final int numBytes;
+		private final String wrapper;
+		private final int accumulatedBytes;
+
+		AddBuffer(MemorySegment segment, int offset, int numBytes, SpanningWrapper wrapper) {
+			this.segment = objectToString(segment);
+			this.offset = offset;
+			this.numBytes = numBytes;
+			this.wrapper = objectToString(wrapper);
+			this.accumulatedBytes = wrapper.accumulatedRecordBytes;
+		}
+
+		AddBuffer(MemorySegment segment, int offset, int numBytes, NonSpanningWrapper wrapper) {
+			this.segment = objectToString(segment);
+			this.offset = offset;
+			this.numBytes = numBytes;
+			this.wrapper = objectToString(wrapper);
+			this.accumulatedBytes = 0;
+		}
+
+		@Override
+		public String toString() {
+			return "AddBuffer{" +
+				"segment='" + segment + '\'' +
+				", offset=" + offset +
+				", numBytes=" + numBytes +
+				", wrapper='" + wrapper + '\'' +
+				(accumulatedBytes > 0 ? ", accumulatedBytes=" + accumulatedBytes : "") +
+				'}';
+		}
+	}
+
+	private static class GetRecord extends Action {
+		private final String wrapper;
+		private final int position;
+		private final int recordLength;
+		private final int remainingAfter;
+
+		GetRecord(NonSpanningWrapper wrapper, int position, int recordLength, int remainingAfter) {
+			this.wrapper = objectToString(wrapper);
+			this.position = position;
+			this.recordLength = recordLength;
+			this.remainingAfter = remainingAfter;
+		}
+
+		GetRecord(SpanningWrapper wrapper, int position, int recordLength, int remainingAfter) {
+			this.wrapper = objectToString(wrapper);
+			this.position = position;
+			this.recordLength = recordLength;
+			this.remainingAfter = remainingAfter;
+		}
+
+		@Override
+		public String toString() {
+			return "GetRecord{" +
+				"wrapper='" + wrapper + '\'' +
+				", position=" + position +
+				", recordLength=" + recordLength +
+				", remainingAfter=" + remainingAfter +
+				'}';
+		}
+	}
+
+	private static class MoveToSpilling extends Action {
+		private final String from;
+		private final String to;
+		private final int position;
+		private final int length;
+
+		MoveToSpilling(NonSpanningWrapper from, SpanningWrapper to, int position, int length) {
+			this.from = objectToString(from);
+			this.to = objectToString(to);
+			this.position = position;
+			this.length = length;
+		}
+
+		@Override
+		public String toString() {
+			return "MoveToSpilling{" +
+				"from='" + from + '\'' +
+				", to='" + to + '\'' +
+				", position=" + position +
+				", length=" + length +
+				'}';
+		}
+	}
+
+	private static class MoveToSpanning extends Action {
+		private final String from;
+		private final String to;
+		private final int position;
+		private final int length;
+
+		MoveToSpanning(NonSpanningWrapper from, SpanningWrapper to, int position, int length) {
+			this.from = objectToString(from);
+			this.to = objectToString(to);
+			this.position = position;
+			this.length = length;
+		}
+
+		@Override
+		public String toString() {
+			return "MoveToSpanning{" +
+				"from='" + from + '\'' +
+				", to='" + to + '\'' +
+				", position=" + position +
+				", length=" + length +
+				'}';
+		}
+	}
+
+	private static class MoveToNonSpanning extends Action {
+		private final String from;
+		private final String to;
+		private final String segment;
+		private final int position;
+		private final int length;
+
+		MoveToNonSpanning(SpanningWrapper from, NonSpanningWrapper to, MemorySegment segment, int position, int length) {
+			this.from = objectToString(from);
+			this.to = objectToString(to);
+			this.segment = objectToString(segment);
+			this.position = position;
+			this.length = length;
+		}
+
+		@Override
+		public String toString() {
+			return "MoveToNonSpanning{" +
+				"from='" + from + '\'' +
+				", to='" + to + '\'' +
+				", segment='" + segment + '\'' +
+				", position=" + position +
+				", length=" + length +
+				'}';
+		}
+	}
+
+	private static class EmptyCollection<T> extends AbstractCollection<T> {
+		@Override
+		public Iterator<T> iterator() {
+			return new EmptyCollectionIterator<>();
+		}
+
+		@Override
+		public int size() {
+			return 0;
+		}
+
+		@Override
+		public boolean add(T action) {
+			return false;
+		}
+
+		@Override
+		public void clear() {
+		}
+	}
+
+	private static class EmptyCollectionIterator<T> implements Iterator<T> {
+		@Override
+		public boolean hasNext() {
+			return false;
+		}
+
+		@Override
+		public T next() {
+			throw new NoSuchElementException();
+		}
 	}
 }
