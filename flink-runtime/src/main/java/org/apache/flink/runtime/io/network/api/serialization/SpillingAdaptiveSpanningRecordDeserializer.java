@@ -44,6 +44,7 @@ import java.nio.channels.FileChannel;
 import java.util.AbstractCollection;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Random;
 
@@ -142,7 +143,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 								len - bytesRead,
 								this.nonSpanningWrapper.position,
 								this.nonSpanningWrapper.limit,
-								actionLog));
+								actionLog,
+								this.nonSpanningWrapper.segment.wrap(0, this.nonSpanningWrapper.limit)));
 					}
 
 					int remaining = this.nonSpanningWrapper.remaining();
@@ -164,7 +166,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 							len - bytesRead,
 							this.nonSpanningWrapper.position,
 							this.nonSpanningWrapper.limit,
-							actionLog),
+							actionLog,
+							this.nonSpanningWrapper.segment.wrap(0, this.nonSpanningWrapper.limit)),
 						e);
 				}
 			}
@@ -652,8 +655,10 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 		private Optional<String> getDeserializationError(int addToReadBytes) {
 			Optional<String> deserializationError = Optional.empty();
 			int remainingSpanningBytes = 0, leftOverDataStart = 0, leftOverDataLimit = 0;
+			ByteBuffer lastBuffer = null;
 			if (this.spillFileReader == null) {
 				remainingSpanningBytes = this.serializationReadBuffer.available() - addToReadBytes;
+				lastBuffer = ByteBuffer.wrap(buffer, 0, accumulatedRecordBytes);
 			} else {
 				try {
 					remainingSpanningBytes = this.spillFileReader.available() - addToReadBytes;
@@ -668,7 +673,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 				deserializationError = Optional.of(
 					formatDeserializationError(
 						this.recordLength, remainingSpanningBytes, leftOverDataStart, leftOverDataLimit,
-						actionLog));
+						actionLog, lastBuffer));
 			}
 			return deserializationError;
 		}
@@ -779,15 +784,22 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			int remainingBytes,
 			int leftOverDataStart,
 			int leftOverDataLimit,
-			AbstractCollection<Action> actionLog) {
+			AbstractCollection<Action> actionLog,
+			ByteBuffer wrap) {
+		String bufferString = null;
+		if (wrap != null) {
+			byte[] bufferArray = new byte[wrap.limit() - wrap.position()];
+			wrap.get(bufferArray);
+			bufferString = StringUtils.byteToHexString(bufferArray);
+		}
 		return String.format(
 			"Serializer consumed more/less bytes than the record had. " +
 				"This indicates broken serialization. If you are using custom serialization types " +
 				"(Value or Writable), check their serialization methods. If you are using a " +
 				"Kryo-serialized type, check the corresponding Kryo serializer. " +
 				"%d remaining unread byte(s) in buffer for record (expected length=%d); " +
-				"remaining buffer bytes: start=%d, end=%d\nlast 100 actions: %s",
-			remainingBytes, recordLength, leftOverDataStart, leftOverDataLimit, actionLog);
+				"remaining buffer bytes: start=%d, end=%d\nlast 100 actions: %s\nlast buffer: %s",
+			remainingBytes, recordLength, leftOverDataStart, leftOverDataLimit, actionLog, bufferString);
 	}
 
 	private static class Action {
