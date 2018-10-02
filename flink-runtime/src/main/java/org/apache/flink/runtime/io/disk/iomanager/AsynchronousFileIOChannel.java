@@ -28,6 +28,7 @@ import java.nio.channels.FileChannel;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.apache.flink.util.FileUtils.writeCompletely;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -341,7 +342,7 @@ final class SegmentWriteRequest implements WriteRequest {
 	@Override
 	public void write() throws IOException {
 		try {
-			this.channel.fileChannel.write(this.segment.wrap(0, this.segment.size()));
+			writeCompletely(this.channel.fileChannel, this.segment.wrap(0, this.segment.size()));
 		}
 		catch (NullPointerException npex) {
 			throw new IOException("Memory segment has been released.");
@@ -375,8 +376,8 @@ final class BufferWriteRequest implements WriteRequest {
 		header.putInt(nioBufferReadable.remaining());
 		header.flip();
 
-		channel.fileChannel.write(header);
-		channel.fileChannel.write(nioBufferReadable);
+		writeCompletely(channel.fileChannel, header);
+		writeCompletely(channel.fileChannel, nioBufferReadable);
 	}
 
 	@Override

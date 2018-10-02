@@ -37,6 +37,7 @@ import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Random;
 
+import static org.apache.flink.util.FileUtils.writeCompletely;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -107,7 +108,7 @@ public class SpilledBufferOrEventSequenceTest {
 			ByteBuffer buf = ByteBuffer.allocate(7);
 			buf.order(ByteOrder.LITTLE_ENDIAN);
 
-			fileChannel.write(buf);
+			writeCompletely(fileChannel, buf);
 			fileChannel.position(0);
 
 			SpilledBufferOrEventSequence seq = new SpilledBufferOrEventSequence(tempFile, fileChannel, buffer, pageSize);
@@ -175,7 +176,7 @@ public class SpilledBufferOrEventSequenceTest {
 			data.put((byte) 0);
 			data.position(0);
 			data.limit(312);
-			fileChannel.write(data);
+			writeCompletely(fileChannel, data);
 			fileChannel.position(0L);
 
 			SpilledBufferOrEventSequence seq = new SpilledBufferOrEventSequence(tempFile, fileChannel, buffer, pageSize);
@@ -414,7 +415,7 @@ public class SpilledBufferOrEventSequenceTest {
 			ByteBuffer data = ByteBuffer.allocate(157);
 			data.order(ByteOrder.LITTLE_ENDIAN);
 
-			fileChannel.write(data);
+			writeCompletely(fileChannel, data);
 			fileChannel.position(54);
 
 			SpilledBufferOrEventSequence seq = new SpilledBufferOrEventSequence(tempFile, fileChannel, buffer, pageSize);
@@ -451,8 +452,8 @@ public class SpilledBufferOrEventSequenceTest {
 		header.put((byte) 1);
 		header.flip();
 
-		fileChannel.write(header);
-		fileChannel.write(serializedEvent);
+		writeCompletely(fileChannel, header);
+		writeCompletely(fileChannel, serializedEvent);
 		return new BufferOrEvent(evt, channelIndex);
 	}
 
@@ -467,7 +468,7 @@ public class SpilledBufferOrEventSequenceTest {
 			data.put((byte) i);
 		}
 		data.flip();
-		fileChannel.write(data);
+		writeCompletely(fileChannel, data);
 	}
 
 	private static void validateBuffer(BufferOrEvent boe, int expectedSize, int expectedChannelIndex) {

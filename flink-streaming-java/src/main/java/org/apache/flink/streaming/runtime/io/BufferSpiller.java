@@ -38,6 +38,8 @@ import java.nio.channels.FileChannel;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.apache.flink.util.FileUtils.writeCompletely;
+
 /**
  * The buffer spiller takes the buffers and events from a data stream and adds them to a spill file.
  * After a number of elements have been spilled, the spiller can "roll over": It presents the spilled
@@ -75,9 +77,6 @@ public class BufferSpiller implements BufferBlocker {
 	/** The buffer that encodes the spilled header. */
 	private final ByteBuffer headBuffer;
 
-	/** The reusable array that holds header and contents buffers. */
-	private final ByteBuffer[] sources;
-
 	/** The file that we currently spill to. */
 	private File currentSpillFile;
 
@@ -108,8 +107,6 @@ public class BufferSpiller implements BufferBlocker {
 
 		this.headBuffer = ByteBuffer.allocateDirect(16);
 		this.headBuffer.order(ByteOrder.LITTLE_ENDIAN);
-
-		this.sources = new ByteBuffer[] { this.headBuffer, null };
 
 		File[] tempDirs = ioManager.getSpillingDirectories();
 		this.tempDir = tempDirs[DIRECTORY_INDEX.getAndIncrement() % tempDirs.length];
@@ -148,8 +145,8 @@ public class BufferSpiller implements BufferBlocker {
 
 			bytesWritten += (headBuffer.remaining() + contents.remaining());
 
-			sources[1] = contents;
-			currentChannel.write(sources);
+			writeCompletely(currentChannel, headBuffer);
+			writeCompletely(currentChannel, contents);
 		}
 		finally {
 			if (boe.isBuffer()) {

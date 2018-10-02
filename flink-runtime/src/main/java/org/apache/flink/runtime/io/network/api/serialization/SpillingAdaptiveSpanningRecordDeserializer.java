@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.Random;
 
+import static org.apache.flink.util.FileUtils.writeCompletely;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -516,7 +517,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 				this.spillingChannel = createSpillingChannel();
 
 				ByteBuffer toWrite = partial.segment.wrap(partial.position, numBytesChunk);
-				this.spillingChannel.write(toWrite);
+				writeCompletely(this.spillingChannel, toWrite);
 			}
 			else {
 				// collect in memory
@@ -563,7 +564,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			if (spillingChannel != null) {
 				// spill to file
 				ByteBuffer toWrite = segment.wrap(segmentPosition, toCopy);
-				this.spillingChannel.write(toWrite);
+				writeCompletely(this.spillingChannel, toWrite);
 			} else {
 				segment.get(segmentPosition, buffer, this.accumulatedRecordBytes, toCopy);
 			}
