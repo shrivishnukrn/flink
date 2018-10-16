@@ -97,7 +97,7 @@ public class RecordWriter<T extends IOReadableWritable> {
 		this.serializers = new SpanningRecordSerializer[numChannels];
 		this.bufferBuilders = new Optional[numChannels];
 		for (int i = 0; i < numChannels; i++) {
-			serializers[i] = new SpanningRecordSerializer<T>();
+			serializers[i] = new SpanningRecordSerializer<T>(this.hashCode());
 			bufferBuilders[i] = Optional.empty();
 		}
 	}

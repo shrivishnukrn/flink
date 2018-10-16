@@ -18,11 +18,11 @@
 
 package org.apache.flink.core.io;
 
-import java.io.IOException;
-
 import org.apache.flink.annotation.Public;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+
+import java.io.IOException;
 
 /**
  * This interface must be implemented by every class whose objects have to be serialized to their binary representation
@@ -55,4 +55,59 @@ public interface IOReadableWritable {
 	 */
 	void read(DataInputView in) throws IOException;
 
+	class TracePojo {
+		public static final int TRACE_POJO_HEADER = Integer.MAX_VALUE;
+
+		private final int recordWriterId;
+		private final int serializerId;
+		private final long threadId;
+		private final long currentTimeMillis;
+		private final long counter;
+
+		public TracePojo(
+				int recordWriterId,
+				int serializerId,
+				long threadId,
+				long currentTimeMillis,
+				long counter) {
+			this.recordWriterId = recordWriterId;
+			this.serializerId = serializerId;
+			this.threadId = threadId;
+			this.currentTimeMillis = currentTimeMillis;
+			this.counter = counter;
+		}
+
+		@Override
+		public String toString() {
+			return "TraceRecord{" +
+				"recordWriterId=" + recordWriterId +
+				", serializerId=" + serializerId +
+				", threadId=" + threadId +
+				", currentTimeMillis=" + currentTimeMillis +
+				", counter=" + counter + '}';
+		}
+
+
+		public void write(DataOutputView out) throws IOException {
+			out.writeInt(recordWriterId);
+			out.writeInt(serializerId);
+			out.writeLong(threadId);
+			out.writeLong(currentTimeMillis);
+			out.writeLong(counter);
+		}
+
+		public static TracePojo readTracePojo(DataInputView in) throws IOException {
+			int recordWriterId = in.readInt();
+			int serializerId = in.readInt();
+			long threadId = in.readLong();
+			long currentTimeMillis = in.readLong();
+			long counter = in.readLong();
+
+			return new TracePojo(recordWriterId, serializerId, threadId, currentTimeMillis, counter);
+		}
+		public static int getSizeInBytes() {
+			// 5 bytes for variable length encoded TRACE_POJO_HEADER
+			return 5 + Integer.BYTES * 2 + Long.BYTES * 3;
+		}
+	}
 }

@@ -19,11 +19,13 @@
 package org.apache.flink.runtime.io.network.api.serialization;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.core.io.IOReadableWritable.TracePojo;
 import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
+import org.apache.flink.types.StringValue;
 import org.apache.flink.util.StringUtils;
 
 import org.apache.commons.collections.buffer.CircularFifoBuffer;
@@ -69,7 +71,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 	private final AbstractCollection<Action> actionLog;
 
 	public SpillingAdaptiveSpanningRecordDeserializer(String[] tmpDirectories) {
-		this(tmpDirectories, false);
+		this(tmpDirectories, true);
 	}
 
 	public SpillingAdaptiveSpanningRecordDeserializer(String[] tmpDirectories, boolean activateActionLog) {
@@ -133,7 +135,8 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 					actionLog.add(
 						new GetRecord(this.nonSpanningWrapper, oldPosition, len,
 							this.nonSpanningWrapper.remaining() - len));
-					target.read(this.nonSpanningWrapper);
+
+					read(target, this.nonSpanningWrapper);
 					int bytesRead = this.nonSpanningWrapper.position - oldPosition;
 
 					if (bytesRead != len) {
@@ -195,7 +198,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 						this.spanningWrapper.recordLength,
 						this.spanningWrapper.remaining() -
 							this.spanningWrapper.recordLength));
-				target.read(this.spanningWrapper.getInputView());
+				read(target, this.spanningWrapper.getInputView());
 			} catch (EOFException e) {
 				Optional<String> deserializationError = this.spanningWrapper.getDeserializationError(1);
 				if (deserializationError.isPresent()) {
@@ -215,6 +218,20 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 				DeserializationResult.INTERMEDIATE_RECORD_FROM_BUFFER;
 		} else {
 			return DeserializationResult.PARTIAL_RECORD;
+		}
+	}
+
+	private TracePojo read(T target, DataInputView in) throws IOException {
+		if (target instanceof StringValue) {
+			TracePojo tracePojo = ((StringValue) target).readWithTrace(in);
+			if (tracePojo != null) {
+				actionLog.add(new TraceRecord(tracePojo));
+			}
+			return tracePojo;
+		}
+		else {
+			target.read(in);
+			return null;
 		}
 	}
 
@@ -807,6 +824,19 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 			return o.getClass().getSimpleName() + "@" + Integer.toHexString(o.hashCode());
 		}
 
+	}
+
+	private static class TraceRecord extends Action {
+		private TracePojo tracePojo;
+
+		public TraceRecord(TracePojo tracePojo) {
+			this.tracePojo = checkNotNull(tracePojo);
+		}
+
+		@Override
+		public String toString() {
+			return tracePojo.toString();
+		}
 	}
 
 	private static class AddBuffer extends Action {

@@ -19,9 +19,11 @@
 package org.apache.flink.runtime.io.network.api.serialization;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.core.io.IOReadableWritable.TracePojo;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
+import org.apache.flink.types.StringValue;
 
 import javax.annotation.Nullable;
 
@@ -54,7 +56,20 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 	@Nullable
 	private BufferBuilder targetBuffer;
 
+	private final int recordWriterId;
+
+	private final int serializerId;
+
+	private long counter;
+
 	public SpanningRecordSerializer() {
+		this(-1);
+	}
+
+	public SpanningRecordSerializer(int recordWriterId) {
+		this.recordWriterId = recordWriterId;
+		serializerId = hashCode();
+
 		serializationBuffer = new DataOutputSerializer(128);
 
 		lengthBuffer = ByteBuffer.allocate(4);
@@ -85,7 +100,19 @@ public class SpanningRecordSerializer<T extends IOReadableWritable> implements R
 		lengthBuffer.clear();
 
 		// write data and length
-		record.write(serializationBuffer);
+		if (record instanceof StringValue) {
+			((StringValue) record).writeWithTrace(
+				serializationBuffer,
+				new TracePojo(
+					recordWriterId,
+					serializerId,
+					Thread.currentThread().getId(),
+					System.currentTimeMillis(),
+					counter++));
+		}
+		else {
+			record.write(serializationBuffer);
+		}
 
 		int len = serializationBuffer.length();
 		lengthBuffer.putInt(0, len);

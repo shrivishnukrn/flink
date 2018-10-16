@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.api.serialization;
 
 import org.apache.flink.core.io.IOReadableWritable;
+import org.apache.flink.core.io.IOReadableWritable.TracePojo;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.MemorySegment;
@@ -134,7 +135,9 @@ public class SpanningRecordSerializationTest extends TestLogger {
 	public void testHandleDeserializingTooMuchNonSpanning2() throws Exception {
 		expectedException.expect(IOException.class);
 		expectedException.expectMessage(" -1 remaining unread byte");
-		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 17);
+		testHandleWrongDeserialization(
+			new StringValueDeserializingTooMuch("Test string"),
+			17 + TracePojo.getSizeInBytes());
 	}
 
 	/**
@@ -146,7 +149,9 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		expectedException.expect(IOException.class);
 		expectedException.expectMessage(" -1 remaining unread byte");
 		expectedException.expectCause(isA(IndexOutOfBoundsException.class));
-		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 16);
+		testHandleWrongDeserialization(
+			new StringValueDeserializingTooMuch("Test string"),
+			16 + TracePojo.getSizeInBytes());
 	}
 
 	/**
@@ -158,7 +163,9 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		expectedException.expect(IOException.class);
 		expectedException.expectMessage(" -1 remaining unread byte");
 		expectedException.expectCause(isA(EOFException.class));
-		testHandleWrongDeserialization(new StringValueDeserializingTooMuch("Test string"), 15);
+		testHandleWrongDeserialization(
+			new StringValueDeserializingTooMuch("Test string"),
+			15 + TracePojo.getSizeInBytes());
 	}
 
 	/**
@@ -250,9 +257,10 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		}
 
 		@Override
-		public void read(DataInputView in) throws IOException {
-			super.read(in);
+		public TracePojo readWithTrace(DataInputView in) throws IOException {
+			TracePojo tracePojo = super.readWithTrace(in);
 			in.readUnsignedByte(); // not written by write()
+			return tracePojo;
 		}
 	}
 
@@ -269,8 +277,8 @@ public class SpanningRecordSerializationTest extends TestLogger {
 		}
 
 		@Override
-		public void write(DataOutputView out) throws IOException {
-			super.write(out);
+		public void writeWithTrace(DataOutputView out, TracePojo tracePojo) throws IOException {
+			super.writeWithTrace(out, tracePojo);
 			out.write(42); // not used in read()
 		}
 	}

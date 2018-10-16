@@ -477,20 +477,19 @@ public class StringValue implements NormalizableKey<StringValue>, CharSequence, 
 	
 	@Override
 	public void read(final DataInputView in) throws IOException {
-		int len = in.readUnsignedByte();
+		readWithTrace(in);
+	}
 
-		if (len >= HIGH_BIT) {
-			int shift = 7;
-			int curr;
-			len = len & 0x7f;
-			while ((curr = in.readUnsignedByte()) >= HIGH_BIT) {
-				len |= (curr & 0x7f) << shift;
-				shift += 7;
-			}
-			len |= curr << shift;
+	public TracePojo readWithTrace(final DataInputView in) throws IOException {
+		TracePojo tracePojo = null;
+
+		this.len = readLength(in);
+
+		if (len == TracePojo.TRACE_POJO_HEADER) {
+			tracePojo = TracePojo.readTracePojo(in);
+			len = readLength(in);
 		}
-		
-		this.len = len;
+
 		this.hashCode = 0;
 		ensureSize(len);
 		final char[] data = this.value;
@@ -511,18 +510,38 @@ public class StringValue implements NormalizableKey<StringValue>, CharSequence, 
 				data[i] = (char) c;
 			}
 		}
+
+		return tracePojo;
+	}
+
+	private int readLength(DataInputView in) throws IOException {
+		int len = in.readUnsignedByte();
+
+		if (len >= HIGH_BIT) {
+			int shift = 7;
+			int curr;
+			len = len & 0x7f;
+			while ((curr = in.readUnsignedByte()) >= HIGH_BIT) {
+				len |= (curr & 0x7f) << shift;
+				shift += 7;
+			}
+			len |= curr << shift;
+		}
+		return len;
 	}
 
 	@Override
 	public void write(final DataOutputView out) throws IOException {
-		int len = this.len;
+		writeWithTrace(out, null);
+	}
 
-		// write the length, variable-length encoded
-		while (len >= HIGH_BIT) {
-			out.write(len | HIGH_BIT);
-			len >>>= 7;
+	public void writeWithTrace(final DataOutputView out, TracePojo tracePojo) throws IOException {
+		if (tracePojo != null) {
+			writeLength(out, TracePojo.TRACE_POJO_HEADER);
+			tracePojo.write(out);
 		}
-		out.write(len);
+
+		writeLength(out, len);
 
 		// write the char data, variable length encoded
 		for (int i = 0; i < this.len; i++) {
@@ -534,6 +553,15 @@ public class StringValue implements NormalizableKey<StringValue>, CharSequence, 
 			}
 			out.write(c);
 		}
+	}
+
+	private void writeLength(DataOutputView out, int len) throws IOException {
+		// write the length, variable-length encoded
+		while (len >= HIGH_BIT) {
+			out.write(len | HIGH_BIT);
+			len >>>= 7;
+		}
+		out.write(len);
 	}
 
 	// --------------------------------------------------------------------------------------------
