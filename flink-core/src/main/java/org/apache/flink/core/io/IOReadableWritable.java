@@ -23,6 +23,7 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 
 /**
  * This interface must be implemented by every class whose objects have to be serialized to their binary representation
@@ -57,7 +58,9 @@ public interface IOReadableWritable {
 
 	class TracePojo {
 		public static final int TRACE_POJO_HEADER = Integer.MAX_VALUE;
+		public static final long CURRENT_PID = getPid();
 
+		private long pid;
 		private final int recordWriterId;
 		private final int serializerId;
 		private final long threadId;
@@ -70,6 +73,17 @@ public interface IOReadableWritable {
 				long threadId,
 				long currentTimeMillis,
 				long counter) {
+			this (CURRENT_PID, recordWriterId, serializerId, threadId, currentTimeMillis, counter);
+		}
+
+		private TracePojo(
+				long pid,
+				int recordWriterId,
+				int serializerId,
+				long threadId,
+				long currentTimeMillis,
+				long counter) {
+			this.pid = pid;
 			this.recordWriterId = recordWriterId;
 			this.serializerId = serializerId;
 			this.threadId = threadId;
@@ -80,7 +94,9 @@ public interface IOReadableWritable {
 		@Override
 		public String toString() {
 			return "TraceRecord{" +
-				"recordWriterId=" + recordWriterId +
+				"pid=" + pid +
+				", currentPid=" + CURRENT_PID +
+				", recordWriterId=" + recordWriterId +
 				", serializerId=" + serializerId +
 				", threadId=" + threadId +
 				", currentTimeMillis=" + currentTimeMillis +
@@ -89,6 +105,7 @@ public interface IOReadableWritable {
 
 
 		public void write(DataOutputView out) throws IOException {
+			out.writeLong(pid);
 			out.writeInt(recordWriterId);
 			out.writeInt(serializerId);
 			out.writeLong(threadId);
@@ -97,17 +114,32 @@ public interface IOReadableWritable {
 		}
 
 		public static TracePojo readTracePojo(DataInputView in) throws IOException {
+			long pid = in.readLong();
 			int recordWriterId = in.readInt();
 			int serializerId = in.readInt();
 			long threadId = in.readLong();
 			long currentTimeMillis = in.readLong();
 			long counter = in.readLong();
 
-			return new TracePojo(recordWriterId, serializerId, threadId, currentTimeMillis, counter);
+			return new TracePojo(pid, recordWriterId, serializerId, threadId, currentTimeMillis, counter);
 		}
+
 		public static int getSizeInBytes() {
 			// 5 bytes for variable length encoded TRACE_POJO_HEADER
-			return 5 + Integer.BYTES * 2 + Long.BYTES * 3;
+			return 5 + Integer.BYTES * 2 + Long.BYTES * 4;
+		}
+
+		public static long getPid() {
+			String processName = ManagementFactory.getRuntimeMXBean().getName();
+			if (processName != null && !processName.isEmpty()) {
+				try {
+					return Long.parseLong(processName.split("@")[0]);
+				}
+				catch (NumberFormatException ignored) {
+					return 0;
+				}
+			}
+			return 0;
 		}
 	}
 }
