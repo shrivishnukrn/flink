@@ -70,11 +70,14 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 	private final AbstractCollection<Action> actionLog;
 
+	private final boolean activateActionLog;
+
 	public SpillingAdaptiveSpanningRecordDeserializer(String[] tmpDirectories) {
-		this(tmpDirectories, true);
+		this(tmpDirectories, false);
 	}
 
 	public SpillingAdaptiveSpanningRecordDeserializer(String[] tmpDirectories, boolean activateActionLog) {
+		this.activateActionLog = activateActionLog;
 		if (activateActionLog) {
 			//noinspection unchecked
 			actionLog = new CircularFifoBuffer(100);
@@ -222,7 +225,7 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 	}
 
 	private TracePojo read(T target, DataInputView in) throws IOException {
-		if (target instanceof StringValue) {
+		if (activateActionLog) {
 			TracePojo tracePojo = ((StringValue) target).readWithTrace(in);
 			if (tracePojo != null) {
 				actionLog.add(new TraceRecord(tracePojo));
