@@ -25,7 +25,6 @@ import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
-import org.apache.flink.types.StringValue;
 import org.apache.flink.util.StringUtils;
 
 import org.apache.commons.collections.buffer.CircularFifoBuffer;
@@ -226,10 +225,10 @@ public class SpillingAdaptiveSpanningRecordDeserializer<T extends IOReadableWrit
 
 	private TracePojo read(T target, DataInputView in) throws IOException {
 		if (activateActionLog) {
-			TracePojo tracePojo = ((StringValue) target).readWithTrace(in);
-			if (tracePojo != null) {
-				actionLog.add(new TraceRecord(tracePojo));
-			}
+			TracePojo tracePojo = TracePojo.readTracePojo(in);
+
+			target.read(in);
+			actionLog.add(new TraceRecord(tracePojo));
 			return tracePojo;
 		}
 		else {

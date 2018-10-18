@@ -477,18 +477,7 @@ public class StringValue implements NormalizableKey<StringValue>, CharSequence, 
 	
 	@Override
 	public void read(final DataInputView in) throws IOException {
-		readWithTrace(in);
-	}
-
-	public TracePojo readWithTrace(final DataInputView in) throws IOException {
-		TracePojo tracePojo = null;
-
 		this.len = readLength(in);
-
-		if (len == TracePojo.TRACE_POJO_HEADER) {
-			tracePojo = TracePojo.readTracePojo(in);
-			len = readLength(in);
-		}
 
 		this.hashCode = 0;
 		ensureSize(len);
@@ -510,11 +499,9 @@ public class StringValue implements NormalizableKey<StringValue>, CharSequence, 
 				data[i] = (char) c;
 			}
 		}
-
-		return tracePojo;
 	}
 
-	private int readLength(DataInputView in) throws IOException {
+	public static int readLength(DataInputView in) throws IOException {
 		int len = in.readUnsignedByte();
 
 		if (len >= HIGH_BIT) {

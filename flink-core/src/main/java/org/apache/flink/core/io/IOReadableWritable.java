@@ -21,9 +21,12 @@ package org.apache.flink.core.io;
 import org.apache.flink.annotation.Public;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
+import org.apache.flink.types.StringValue;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
+
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * This interface must be implemented by every class whose objects have to be serialized to their binary representation
@@ -114,6 +117,9 @@ public interface IOReadableWritable {
 		}
 
 		public static TracePojo readTracePojo(DataInputView in) throws IOException {
+			int length = StringValue.readLength(in);
+			checkState(length == TRACE_POJO_HEADER);
+
 			long pid = in.readLong();
 			int recordWriterId = in.readInt();
 			int serializerId = in.readInt();
